@@ -6,14 +6,25 @@
 from __future__ import annotations
 
 import hashlib
-import re
 import time
 from pathlib import Path
 
+from ...core.evidence import TruncatedEvidenceError
 from ...core.export import human_bytes, to_json
+from ...core.naming import flat_name, safe_name, unique_names
 from ...core.findings import ModuleResult
 from ...core.session import Ctx
 from ..registry import BOOL, ModuleSpec, Param, register
+
+__all__ = [
+    "STATUS_ABSENT",
+    "STATUS_PRESENT",
+    "STATUS_TRUNCATED",
+    "flat_name",
+    "run",
+    "safe_name",
+    "unique_names",
+]
 
 SIDE_CARS = ("-wal", "-shm", "-journal")
 DEFAULT_TARGETS = [
@@ -23,19 +34,15 @@ DEFAULT_TARGETS = [
     "/data/com.chrome.dev/app_chrome/Default/History",
 ]
 
-
-def safe_name(path: str) -> str:
-    """A single filename component for an in-image path.
-
-    Every character outside ``[A-Za-z0-9._-]`` becomes an underscore, which
-    keeps the result to one component: a ``/`` in an extracted name would put
-    the file somewhere else in the work directory than the manifest says.  A
-    name of ``.`` or ``..`` is the one case the substitution cannot catch,
-    because dots are allowed — and as a path component ``..`` *is* the parent
-    directory, so those two go to ``root`` like an empty path does.
-    """
-    name = re.sub(r"[^A-Za-z0-9._-]+", "_", path.strip("/")) or "root"
-    return "root" if name in (".", "..") else name
+#: What happened to one requested path.  Three words, not two, because the third
+#: case used to be silently folded into the first: a path whose data blocks lie
+#: past the end of a truncated image raised the same "no such path" as a path the
+#: device never had, and the difference between *absent* and *we could not read
+#: what is there* is the difference between a clean negative and a gap in the
+#: evidence.
+STATUS_PRESENT = "PRESENT"
+STATUS_ABSENT = "ABSENT"
+STATUS_TRUNCATED = "TRUNCATED"
 
 
 def run(ctx: Ctx, params: dict) -> ModuleResult:
@@ -47,24 +54,67 @@ def run(ctx: Ctx, params: dict) -> ModuleResult:
     dest_root = Path(params.get("dest") or (ctx.work("extracted")))
     dest_root.mkdir(parents=True, exist_ok=True)
     fs = ctx.fs()
-    manifest = []
+    manifest: list[dict] = []
+
+    # Every requested path, sidecars included, gets its name decided before the
+    # first byte is written — so uniqueness is a property of the whole batch and
+    # not of the order the loop happened to reach things in.
+    wanted: list[str] = []
+    for raw in raw_targets:
+        target = str(raw).strip()
+        wanted.append(target)
+        if sidecars:
+            wanted += [target + suffix for suffix in SIDE_CARS]
+    names = unique_names(wanted)
+
     for target in raw_targets:
         target = str(target).strip()
         started = time.time()
         try:
             inode = fs.resolve(target)
         except KeyError as exc:
-            res.add("warn", f"Brak ścieżki: {target}", detail=str(exc))
+            res.add(
+                "info",
+                f"Brak ścieżki: {target}",
+                detail=f"{STATUS_ABSENT} — ścieżki nie ma w obrazie",
+                values={"path": target, "status": STATUS_ABSENT},
+            )
+            manifest.append({"source_path": target, "status": STATUS_ABSENT, "detail": str(exc)})
             continue
         if not inode.is_reg:
-            res.add("warn", f"To nie jest plik: {target}")
+            res.add(
+                "info",
+                f"To nie jest plik: {target}",
+                detail=f"{STATUS_ABSENT} — inode {inode.number} nie jest plikiem regularnym",
+                values={"path": target, "status": STATUS_ABSENT, "inode": inode.number},
+            )
+            manifest.append(
+                {"source_path": target, "status": STATUS_ABSENT, "detail": "not a regular file", "inode": inode.number}
+            )
             continue
-        blob = fs.read(inode)
+        try:
+            blob = fs.read(inode)
+        except TruncatedEvidenceError as exc:
+            # The one case that must never be recorded as a successful
+            # extraction.  Nothing is written and nothing is hashed: the old
+            # reader returned a zero-filled buffer of the declared length here,
+            # which this manifest would then have certified with a SHA-256.
+            res.add(
+                "warn",
+                f"Obraz ucięty, nie da się odczytać: {target}",
+                detail=f"{STATUS_TRUNCATED} — {exc}",
+                values={"path": target, "status": STATUS_TRUNCATED, "inode": inode.number},
+            )
+            manifest.append(
+                {"source_path": target, "status": STATUS_TRUNCATED, "detail": str(exc), "inode": inode.number}
+            )
+            continue
         digest = hashlib.sha256(blob).hexdigest()
-        out = dest_root / safe_name(target)
+        out = dest_root / names[target]
         out.write_bytes(blob)
-        entry = {
+        entry: dict = {
             "source_path": target,
+            "status": STATUS_PRESENT,
             "output": str(out),
             "size": len(blob),
             "size_human": human_bytes(len(blob)),
@@ -74,7 +124,7 @@ def run(ctx: Ctx, params: dict) -> ModuleResult:
             "seconds": round(time.time() - started, 2),
         }
         manifest.append(entry)
-        companions = []
+        companions: list[dict] = []
         if sidecars:
             for suffix in SIDE_CARS:
                 sibling = target + suffix
@@ -84,11 +134,24 @@ def run(ctx: Ctx, params: dict) -> ModuleResult:
                     continue
                 if not sibling_inode.is_reg:
                     continue
-                sibling_blob = fs.read(sibling_inode)
-                sibling_out = dest_root / safe_name(sibling)
+                try:
+                    sibling_blob = fs.read(sibling_inode)
+                except TruncatedEvidenceError as exc:
+                    res.add(
+                        "warn",
+                        f"Obraz ucięty, nie da się odczytać: {sibling}",
+                        detail=f"{STATUS_TRUNCATED} — {exc}",
+                        values={"path": sibling, "status": STATUS_TRUNCATED},
+                    )
+                    manifest.append(
+                        {"source_path": sibling, "status": STATUS_TRUNCATED, "detail": str(exc)}
+                    )
+                    continue
+                sibling_out = dest_root / names[sibling]
                 sibling_out.write_bytes(sibling_blob)
-                companion = {
+                companion: dict = {
                     "source_path": sibling,
+                    "status": STATUS_PRESENT,
                     "output": str(sibling_out),
                     "size": len(sibling_blob),
                     "sha256": hashlib.sha256(sibling_blob).hexdigest(),
@@ -102,13 +165,27 @@ def run(ctx: Ctx, params: dict) -> ModuleResult:
             values={**entry, "companions": [c["source_path"] for c in companions]},
             artifacts=[str(out)] + [c["output"] for c in companions],
         )
-    res.data = {"count": len(manifest), "items": manifest}
+    res.data = {
+        "count": len(manifest),
+        "present": sum(1 for m in manifest if m["status"] == STATUS_PRESENT),
+        "absent": sum(1 for m in manifest if m["status"] == STATUS_ABSENT),
+        "truncated": sum(1 for m in manifest if m["status"] == STATUS_TRUNCATED),
+        "image_truncated_bytes": getattr(fs, "truncated_bytes", 0),
+        "items": manifest,
+    }
     path = to_json(
         ctx.work("exports") / "extract_manifest.json", res.data, ctx.masker
     )
     res.export(path)
-    if manifest:
-        res.note(f"wyekstrahowano {len(manifest)} plik(ów)")
+    read = res.data["present"]
+    if read:
+        res.note(f"wyekstrahowano {read} plik(ów)")
+    missing = res.data["truncated"]
+    if missing:
+        res.note(
+            f"{missing} plik(ów) nie odczytano — obraz jest ucięty, to brak dowodu, "
+            f"nie brak pliku; patrz extract_manifest.json"
+        )
     return ctx.record(res)
 
 

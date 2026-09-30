@@ -111,7 +111,7 @@ def run(ctx: Ctx, params: dict) -> ModuleResult:
         "checks": TEMPLATE_CHECKS if with_checks else [],
     }
     if hash_image:
-        from .image_info import sha256_file
+        from ...core.evidence import sha256_file
 
         case["image_sha256"] = sha256_file(image_path)
     target.parent.mkdir(parents=True, exist_ok=True)

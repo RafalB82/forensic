@@ -133,15 +133,24 @@ class Ctx:
         return self._file_scan
 
     def materialise(self, target: str) -> Path:
-        """Local copy of a path that may live inside the image."""
-        import re as _re
+        """Local copy of a path that may live inside the image.
+
+        The name comes from :func:`forensic.core.naming.unique_names` rather than
+        from a substitution written out here, because the obvious inline version
+        — replace every non-word character with an underscore — maps ``/a/b`` and
+        ``/a_b`` to one file, and this method was that inline version.
+
+        A truncated image raises rather than returning a short buffer: the copy
+        on disk would otherwise be a full-length file of zeros whose whole
+        purpose is to be parsed by whatever asked for it.
+        """
+        from .naming import safe_name
 
         local = Path(target)
         if local.exists() and local.is_file():
             return local
         blob = self.fs().read(target)
-        name = _re.sub(r"[^A-Za-z0-9._-]+", "_", str(target).strip("/")) or "root"
-        out = self.work("extracted") / name
+        out = self.work("extracted") / safe_name(target)
         out.write_bytes(blob)
         return out
 

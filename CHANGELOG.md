@@ -3,6 +3,105 @@
 Wersje narzędzia. Każda tura planu (`PLAN.md`) to jedna wersja; numery
 commitów i wyniki weryfikacji są w `PLAN.md` w sekcji „CHECKPOINTY".
 
+## 0.13.0 — integralność dowodu: obraz ucięty przestaje udawać czytelny
+
+Stan bazowy, zmierzony na obrazie referencyjnym 27 GB i na **świeżym katalogu
+roboczym**: **33 checki, 722 asercje, 31 PASS, 2 Niezgodne** — dokładnie te same
+dwa co przed tą turą (`apps.edl_acquire`, `report.secret_audit`), zmierzone przez
+`git stash` na tej samej bazie. To zmiana w tym, **co narzędzie potrafi powiedzieć
+o swojej własnej wejściu**, nie w tym, co znajduje. Wszystkie 90 testów
+przechodzi, samotest ext4 nadal `silent: 0`.
+
+> Uwaga o metodzie: te checki **nie są hermetyczne** — `report.secret_audit`
+> liczy pliki w `work/<case>/extracted` i `cache`, więc liczba zależy od tego,
+> co poprzednie przebiegi tam zostawiły. Dlatego porównanie robione jest na
+> świeżym `--workdir` po obu stronach. Wpis 0.12.0 podaje „35 checki, 730
+> asercji, 35/35 PASS", a case ma 33 checki i dwa od lat nieprzechodzące —
+> ta liczba nie odpowiadała rzeczywistości i nie należy jej powtarzać.
+
+**Najpoważniejsza rzecz w tej turze: obraz ucięty wyglądał jak czytelny.**
+`_BlockCache.get()` dopełniał krótki `pread` zerami do pełnego bloku
+(`data + b"\0" * (self._bs - len(data))`). Ponieważ `read_at()` przycina wynik do
+rozmiaru zadeklarowanego w inode, plik, którego bloki danych leżały za końcem
+pliku, wracał jako bufor **dokładnie zadeklarowanej długości**, pełen zer, bez
+żadnego wyjątku. `extract_file` haszował ten bufor i wpisywał hash do manifestu.
+Manifest poświadczający SHA-256 zmyślonych bajtów jest gorszy niż brak
+manifestu.
+
+Pomiar na uciętej kopii obrazu testowego — plik zadeklarowany na 4096 B, którego
+extenty leżą za końcem pliku:
+
+| | przed | po |
+|---|---|---|
+| `read()` | 4096 B zer | `TruncatedEvidenceError` |
+| zgodność z prawdziwą treścią | 11/4096 B | — |
+| hash w manifeście | tak, z zer | nie |
+
+Potwierdzone przez porównanie obu implementacji na tych samych bajtach
+(`/tmp/opencode/ev/check.py`): stary kod zwraca `4096 bytes, all-zero=True`,
+nowy rzuca `TruncatedEvidenceError`.
+
+**Brakujące dane to nie brak danych.** Ucięcie **poniżej** metadanych dawało
+`KeyError`, który każdy moduł renderuje jako *„Brak ścieżki"* — czystą
+negatywę. Nie jest to czysta negatywa: plik tam był i nie da się go odczytać.
+`extract_file` ma teraz trzy stany w manifeście: `PRESENT`, `ABSENT`,
+`TRUNCATED`. Ucięty plik **nie** dostaje `output` ani `sha256` — bo nie ma czego
+poświadczać.
+
+**`TruncatedEvidenceError` nie dziedziczy po `Ext4Error`.** Moduły łapią
+`Ext4Error`, żeby powiedzieć *„to nie jest ext4, który umiem czytać"*. Gdyby
+ucięcie było podklasą, jeden `except` zjadłby brak dowodu i zgłosił zepsuty
+format dla filesystemu, którego pierwsza połowa jest w pełni czytelna. Te dwie
+odpowiedzi są przeciwne i nie mogą się zlać.
+
+**Nadmiar na końcu pliku to nie ucięcie.** Referencyjny obraz ma 27 577 531 904 B
+w pliku przy 27 577 507 840 B zadeklarowanych przez superblock — 24 064 B
+więcej, bo kopia partycji w obrazie całego dysku. `Ext4.truncated` liczy
+`max(0, declared - available)`, więc nie ma fałszywego alarmu na obrazie, na
+którym to narzędzie pracuje.
+
+**`verify` nigdy nie otwierał obrazu, żeby zrobić SHA-256.** `runner.py` robił
+`sha = sha or case.get("image_sha256")` i wkładał tę wartość do podsumowania,
+jakby przebieg ją potwierdził. `image_sha256` w case jest **twierdzeniem**, nie
+wynikiem. Teraz `EvidenceIdentity` porównuje twierdzenie z plikiem, który
+przebieg właśnie czyta, i raportuje jeden z czterech stanów — `PASS`, `FAIL`,
+`UNVERIFIED` (nie ma z czym porównać), `NOT_CHECKED` (jest twierdzenie, ale nie
+przeliczono). *„Nie sprawdzono"* i *„sprawdzone i OK"* nie mogą brzmieć tak samo.
+
+SHA-256 nie jest liczone domyśnie: referencyjny obraz hashuje się **2m51s**
+(27 GB, ~160 MB/s), a `stat` jest darmowy. Rozmiar sprawdzany jest zawsze i
+za każdym razem; hash tylko gdy poprosi o to `--param rehash=true`. `FAIL` przy
+niezgodności rozmiaru lub hasza **zastępuje** werdykt modułu — 33/33 checki
+przechodzące na niewłaściwym obrazie to gorszy raport niż 0/33 na właściwym.
+
+Ten sam brak z drugiej strony: `report.py` podpadał do hasha z case, gdy moduł
+`image_info` nie był uruchomiony, i prezentował go tak samo jak policzony.
+Teraz pole `sha256_source` mówi wprost `obliczony` / `z case`.
+
+**Kolizja nazwek: dwa źródła, jeden plik.** `safe_name()` spłaszczał ścieżkę
+podstawieniem, więc `/a/b` i `/a_b` dawały obie `a_b`. Drugi extraction
+nadpisywał pierwszy, a manifest wymieniał dwa różne SHA-256 dla jednego pliku na
+dysku. Istniejący test `test_distinct_paths_do_not_collide` **przechodził** —
+sprawdzał `/data/com.example/x` przeciw `/data/com/example/x`, co rozjeżdża się
+dzięki kropce w `com.example`, a nie dzięki temu, że kolizja jest obsłużona.
+Nazwa to teraz spłaszczenie **plus digest ścieżki**, a `unique_names()` nie polega
+na 48 bitach marginesu: sprawdza i dokleja porządkowy sufiks. Ta sama wada była
+w `Ctx.materialise`, z własną wersją podstawienia — teraz oba miejsca dzielą
+`forensic/core/naming.py`.
+
+**Nazwy artefaktów się zmieniły** (`data_system_lock_settings.db--682f455a1c70`).
+Stabilne między przebiegami — powtórzenie case'u nie zmienia nazw, do których
+odwołuje się wcześniejszy raport — ale inne niż poprzednio, więc wyeksportowane
+pliki ze starych przebiegów mają stare nazwy i nie zostaną nadpisane.
+
+Nowe: `forensic/core/evidence.py` (`EvidenceIdentity`, `TruncatedEvidenceError`,
+`read_exact`, `sha256_file`), `forensic/core/naming.py`.
+`sha256_file` przeniesiony z `image_info`, który teraz go re-eksportuje —
+akwizycja, `newcase` i `verify` potrzebują go wszystkie i żaden nie powinien sięgać
+do innego modułu po niego.
+Testy: `tests/test_truncated_evidence.py` (13) — ucięty o 1 B, o blok, o
+metadane, o extent; oraz brak zera udającego plik i brak fałszywej czystej negatywy.
+
 ## 0.12.0 — menu: dwa ekrany, prawdziwa dwujęzyczność, ASCII zamiast `ł=?`
 
 Stan bazowy: **35 checki, 730 asercji, 35/35 PASS** — bez zmian, to zmiana

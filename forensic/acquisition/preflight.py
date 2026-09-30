@@ -192,7 +192,7 @@ def image_info(image: str, with_hash: bool = False) -> dict:
     out["size_human"] = f"{stat.st_size / 2**30:.2f} GiB"
     out["mtime"] = stat.st_mtime
     if with_hash:
-        from ..modules.offline.image_info import sha256_file
+        from ..core.evidence import sha256_file
 
         out["sha256"] = sha256_file(path)
     return out

@@ -5,35 +5,18 @@
 
 from __future__ import annotations
 
-import hashlib
 import time
 from pathlib import Path
 
 from ...core import fsformat, i18n
+from ...core.evidence import CHUNK_BYTES as MB, sha256_file
 from ...core.export import human_bytes, to_json
 from ...core.ext4 import Ext4Error
 from ...core.findings import ModuleResult
 from ...core.session import Ctx
 from ..registry import BOOL, ModuleSpec, Param, register
 
-MB = 1024 * 1024
-
-
-def sha256_file(path: Path, chunk: int = 8 * MB, progress=None) -> str:
-    """Streaming SHA-256 with byte-level progress."""
-    digest = hashlib.sha256()
-    total = path.stat().st_size
-    done = 0
-    with open(path, "rb") as handle:
-        while True:
-            block = handle.read(chunk)
-            if not block:
-                break
-            digest.update(block)
-            done += len(block)
-            if progress is not None:
-                progress(done, total)
-    return digest.hexdigest()
+__all__ = ["MB", "sha256_file", "looks_like_gpt_or_mbr", "run"]
 
 
 def looks_like_gpt_or_mbr(path: Path) -> dict:

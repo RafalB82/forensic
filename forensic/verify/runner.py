@@ -18,7 +18,8 @@ from pathlib import Path
 from typing import Any
 from collections.abc import Callable
 
-from ..core.export import render_table
+from ..core.evidence import INTEGRITY_FAIL, EvidenceIdentity
+from ..core.export import color, render_table, text
 from ..core.session import Ctx
 from ..modules import registry
 
@@ -212,28 +213,94 @@ def case_paths(ctx: Ctx, case_path: str | Path, scope: str) -> list[Path]:
     return out
 
 
+def identify_evidence(
+    ctx: Ctx,
+    expected_size: int | None,
+    expected_sha256: str,
+    rehash: bool = False,
+    progress: Callable[[str], None] | None = None,
+) -> dict:
+    """Establish what the evidence is and whether the case agrees.
+
+    The case file's ``image_sha256`` is a **claim**.  It used to be copied into
+    the summary as ``image_sha256`` and printed as though the run had confirmed
+    it — the runner never opened the image to hash it, so a case file carried
+    forward from another device, or edited by hand, or simply stale would
+    produce a summary quoting a hash of a file nobody had.  ``report.py`` had
+    the same gap from the other side, falling back to the case value whenever the
+    ``image_info`` module had not run.
+
+    So the claim is compared against the file the run is actually reading, and
+    the result says which of four things happened: the two agree, they disagree,
+    there was a claim and we did not check it, or there was nothing to check
+    against.  "Did not check" and "checked and fine" must never print the same
+    word.
+
+    ``rehash`` is off by default: the reference image is 27 GB and hashes in
+    2m51s here.  The size comparison is free and always runs.
+    """
+    image = ctx.image
+    if not image.exists():
+        return {
+            "path": str(image),
+            "size": 0,
+            "size_expected": expected_size,
+            "size_match": False,
+            "sha256": "",
+            "sha256_expected": (expected_sha256 or "").strip().lower(),
+            "sha256_computed": False,
+            "filesystem": "",
+            "truncated_bytes": 0,
+            "integrity": INTEGRITY_FAIL,
+            "detail": f"obraz nie istnieje: {image}",
+        }
+    if progress:
+        progress("identyfikacja obrazu (stat)" + (" + SHA-256" if rehash else ""))
+    identity = EvidenceIdentity.identify(
+        image,
+        hash_image=rehash,
+        progress=(lambda done, total: progress(f"SHA-256 {done * 100 // max(total, 1)}%"))  # type: ignore[arg-type]
+        if progress and rehash
+        else None,
+    )
+    fs = ctx.fs_handle
+    # ``Ext4`` is the only reader today that carries the shortfall, so the
+    # attribute is read defensively — a future reader that does not report it
+    # must not stop the identity from being established.
+    missing = int(getattr(fs, "truncated_bytes", 0) or 0) if fs is not None else 0
+    if missing:
+        identity = identity.with_truncation(missing)
+    return identity.verify_against(
+        expected_size=expected_size, expected_sha256=expected_sha256
+    )
+
+
 def run_case(
     ctx: Ctx,
     case_path: str | Path,
     scope: str = "all",
     only: str = "",
     progress: Callable[[str], None] | None = None,
+    rehash: bool = False,
 ) -> dict:
     results: list[CheckResult] = []
     sources: list[str] = []
     image = None
     sha = None
+    declared_size = None
     for path in case_paths(ctx, case_path, scope):
         case = load_case(path)
         sources.append(path.name)
         image = image or case.get("image")
         sha = sha or case.get("image_sha256")
+        declared_size = declared_size if declared_size is not None else case.get("image_size")
         checks = case.get("checks", [])
         if scope not in SCOPE_ALL:
             checks = [c for c in checks if scope in (c.get("scopes") or ["all"])]
         if only:
             checks = [c for c in checks if only in c.get("id", "")]
         results += [run_check(ctx, check) for check in checks]
+    evidence = identify_evidence(ctx, declared_size, sha or "", rehash, progress)
     passed = sum(1 for r in results if r.passed)
     summary = {
         "case": sources[0] if sources else str(case_path),
@@ -241,6 +308,8 @@ def run_case(
         "scope": scope or "all",
         "image": image,
         "image_sha256": sha,
+        "evidence": evidence,
+        "integrity": evidence["integrity"],
         "generated": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "checks": len(results),
         "passed": passed,
@@ -252,7 +321,45 @@ def run_case(
     return summary
 
 
+def evidence_lines(summary: dict) -> list[tuple[str, str]]:
+    """The ``Evidence:`` block, one label per row.
+
+    Printed above the check table because it qualifies every row under it: if the
+    image is not the image the case was written against, a green column means
+    nothing.  Kept as its own block rather than a check row so it cannot be
+    filtered out by ``--only`` or scoped away.
+    """
+    evidence = summary.get("evidence") or {}
+    if not evidence:
+        return []
+    rows: list[tuple[str, str]] = [
+        ("path", str(evidence.get("path", ""))),
+        ("size", f"{evidence.get('size', 0)} B"),
+    ]
+    expected = evidence.get("sha256_expected") or ""
+    computed = evidence.get("sha256") or ""
+    rows.append(("sha256", computed or "nieobliczony (uruchom verify --rehash)"))
+    rows.append(("expected_sha256", expected or "brak w case"))
+    rows.append(("integrity", f"{evidence.get('integrity', '?')} — {evidence.get('detail', '')}"))
+    if evidence.get("truncated_bytes"):
+        rows.append(
+            (
+                "truncated",
+                f"obraz ucięty — brakuje {evidence['truncated_bytes']} B na końcu",
+            )
+        )
+    return rows
+
+
 def summary_table(summary: dict, color_enabled: bool = True) -> str:
+    out = ""
+    evidence = evidence_lines(summary)
+    if evidence:
+        title = color("Evidence:", "bold", color_enabled)
+        body = "\n".join(
+            f"  {text.pad(label, 17)} {value}" for label, value in evidence
+        )
+        out = f"{title}\n{body}\n"
     rows = []
     for item in summary.get("results", []):
         rows.append(
@@ -268,7 +375,7 @@ def summary_table(summary: dict, color_enabled: bool = True) -> str:
     # transliterate=False: this table prints the value an assertion actually
     # read.  Replacing a diacritic here would report a filename that is not in the
     # image, which is the one thing a verification table must not do.
-    return render_table(
+    return out + render_table(
         ["", "check", "module", "assert", "time", "failures"],
         rows,
         color_enabled,

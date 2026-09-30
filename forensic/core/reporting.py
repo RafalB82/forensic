@@ -41,6 +41,12 @@ def _case_sha256(ctx: Ctx) -> str:
 
     Hashing 27 GB takes minutes; the case file already carries the value, and a
     report that says "nieobliczony" when the number is known is just noise.
+
+    What it must not do is present a *recorded* hash as if this run had computed
+    it.  The caller labels the result (``sha256_source``) so the report says
+    ``z case`` rather than presenting both sources identically — a hash copied out
+    of a file that was written for a different device is not a verification of
+    anything, and the reader cannot tell the two apart unless we tell them.
     """
     from .config import CASES_DIR
 
@@ -211,6 +217,12 @@ class Builder:
         data = source.get("data", {})
         geometry = data.get("geometry", {})
         state = data.get("state", {})
+        computed = data.get("sha256") or ""
+        # Which of the two produced the value below.  A hash computed from the
+        # image in front of us and a hash read out of a case file are both
+        # plausible strings; only one of them says anything about the image that
+        # was examined, and the reader cannot tell them apart unless we label it.
+        from_case = "" if computed else _case_sha256(self.ctx)
         self.image = {
             "path": str(self.ctx.image),
             "size_bytes": geometry.get("size_bytes") or data.get("size_bytes", 0),
@@ -226,7 +238,10 @@ class Builder:
             "last_mounted": state.get("last_mounted"),
             "packages": data.get("packages"),
             "partition": data.get("partition", {}),
-            "sha256": data.get("sha256") or _case_sha256(self.ctx),
+            "sha256": computed or from_case,
+            "sha256_source": (
+                "obliczony" if computed else "z case" if from_case else "brak"
+            ),
             "source": source.get("file", ""),
         }
         dirty = self.source("fs_check", "e2fsck.log")
@@ -674,7 +689,8 @@ def to_markdown(doc: dict, masker: Masker | None = None) -> str:
             f"| stan fs | {image.get('state') or '?'} · recover: {image.get('recover_needed')} · "
             f"errors: {image.get('errors', '?')} · ostatni mount: {image.get('last_mounted') or '?'} |",
             f"| cechy | {', '.join(image.get('features', [])) or '—'} |",
-            f"| SHA-256 | `{image.get('sha256') or 'nieobliczony'}` |",
+            f"| SHA-256 | `{image.get('sha256') or 'nieobliczony'}` "
+            f"({image.get('sha256_source') or 'brak'}) |",
             "",
         ]
     if doc.get("verdicts"):

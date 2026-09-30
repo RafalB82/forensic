@@ -44,6 +44,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
+from .evidence import read_exact
+
 SB_OFFSET = 1024
 EXT4_MAGIC = 0xEF53
 EXT4_ROOT_INODE = 2
@@ -410,7 +412,21 @@ class Inode:
 
 
 class _BlockCache:
-    """Block-level read cache over one file object, offset by a partition base."""
+    """Block-level read cache over one file object, offset by a partition base.
+
+    Fail-closed.  A ``pread`` that comes back short means the kernel reached the
+    end of the file, and this is the place where that used to be papered over
+    with ``data + b"\\0" * (self._bs - len(data))``.  The padding was invisible
+    to every caller: :meth:`Ext4.read_at` clips to the inode's declared size, so
+    a file whose data blocks sat past the truncation point came back as a buffer
+    of exactly the declared length, full of zeros, and ``extract_file`` hashed it
+    into its manifest.  A manifest that certifies a SHA-256 of fabricated bytes
+    is worse than no manifest, so a short read raises instead.
+
+    The partial data is not cached either — a block that was short once may not
+    be short later if the file is still being written, and caching the failure
+    would freeze a momentary view of a growing image.
+    """
 
     def __init__(self, handle, base: int, block_size: int, limit: int = 4096) -> None:
         self._handle = handle
@@ -427,9 +443,8 @@ class _BlockCache:
             self.hits += 1
             return data
         self.misses += 1
-        data = os.pread(self._handle.fileno(), self._bs, self._base + block * self._bs)
-        if len(data) < self._bs:
-            data = data + b"\0" * (self._bs - len(data))
+        offset = self._base + block * self._bs
+        data = read_exact(self._handle.fileno(), self._bs, offset, what=f"blok {block}")
         if len(self._cache) >= self._limit:
             self._cache.pop(next(iter(self._cache)))
         self._cache[block] = data
@@ -455,6 +470,10 @@ class Ext4:
         self.block_size: int = self.superblock["block_size"]
         self.blocks: int = self.superblock["blocks_count"]
         self.inode_size: int = self.superblock["inode_size"]
+        #: Bytes the file is short of the filesystem it contains.  Zero for an
+        #: image that is whole **and** for one that is larger than the filesystem,
+        #: which is the normal case for a partition inside a whole-disk dump.
+        self.truncated_bytes: int = self._missing_bytes()
         self._cache = _BlockCache(self._handle, self.base, self.block_size)
         self._groups = self._read_group_descriptors()
         #: Directories that could not be listed, with the reason.  A directory
@@ -462,6 +481,30 @@ class Ext4:
         #: it has to reach the report instead of quietly shortening a walk.
         #: Same name and shape as :attr:`forensic.core.f2fs.F2fs.walk_errors`.
         self.walk_errors: list[dict] = []
+
+    def _missing_bytes(self) -> int:
+        """How much of the declared filesystem is not in the file, if any.
+
+        Checked once, at the door, because the superblock is the filesystem's own
+        statement about how large it is and ``stat`` is free.  A superblock read
+        out of the first kilobyte of an image that is missing its last gigabyte
+        is a perfectly valid superblock describing evidence that is not all
+        there, and the two facts have to meet before a single file is parsed.
+
+        Left as a number rather than raised: :meth:`__init__` refusing to open
+        would mean every command on a truncated image answers "wrong filesystem",
+        when what an analyst needs to hear is "right filesystem, 4 GiB missing" —
+        and a truncated image is still the best evidence available.  The reads
+        themselves are what fail closed, in :class:`_BlockCache`.
+        """
+        available = os.fstat(self._handle.fileno()).st_size - self.base
+        declared = self.blocks * self.block_size
+        return max(0, declared - available)
+
+    @property
+    def truncated(self) -> bool:
+        """True when the file does not hold the whole filesystem."""
+        return self.truncated_bytes > 0
 
     def close(self) -> None:
         try:
@@ -480,11 +523,23 @@ class Ext4:
         return self.blocks * self.block_size
 
     def _pread(self, offset: int, length: int) -> bytes:
+        """Read a byte range, tolerating a short one at the very end.
+
+        The one caller is :meth:`_read_superblock`, which has to be able to see
+        that the file ends before offset 1024 + 1024 in order to say "too small
+        to contain a superblock" — the honest name for an empty or stub file.
+        Everything that reads a block the geometry located uses
+        :class:`_BlockCache`, which does not tolerate a short read at all.
+        """
         return os.pread(self._handle.fileno(), length, self.base + offset)
 
     def _read_superblock(self) -> dict:
         raw = self._pread(SB_OFFSET, 1024)
         if len(raw) < 1024:
+            # Not truncation.  A superblock this short means nothing in the file
+            # claims to be a filesystem, so there is no geometry to contradict —
+            # which is a different failure from "the geometry says 27 GB and the
+            # file holds 4".  ``_missing_bytes`` answers the second one.
             raise Ext4Error("image too small to contain a superblock")
         def u16(o: int) -> int:
             return struct.unpack_from("<H", raw, o)[0]
