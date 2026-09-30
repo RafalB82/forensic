@@ -1,0 +1,49 @@
+{
+  "name": "template",
+  "description": "Szablon case — skopiuj i dostosuj",
+  "image": "/path/to/userdata.img",
+  "image_size": 0,
+  "image_sha256": "",
+  "root": "/data",
+  "notes": "",
+  "checks": [
+    {
+      "id": "example.geometry",
+      "module": "image_info",
+      "scopes": [
+        "all",
+        "image"
+      ],
+      "note": "co sprawdza ten test",
+      "params": {
+        "hash": false
+      },
+      "expect": [
+        {
+          "path": "data.geometry.block_size",
+          "equals": 4096
+        },
+        {
+          "path": "data.flags.has_extents",
+          "equals": true
+        }
+      ]
+    }
+  ],
+  "assertion_operators": [
+    "equals",
+    "not_equals",
+    "contains",
+    "not_contains",
+    "matches",
+    "gte",
+    "lte",
+    "in",
+    "tolerance"
+  ],
+  "path_syntax": {
+    "data.<key>": "structured payload returned by the module (result.data)",
+    "<key>": "value merged from all findings",
+    "#<n>.<key>": "value from the n-th finding only"
+  }
+}

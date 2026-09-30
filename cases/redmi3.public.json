@@ -1,0 +1,3479 @@
+{
+  "name": "redmi3",
+  "description": "Redmi 3 (MSM8939) — userdata ext4 z odczytu EDL, 2026-09-24",
+  "image": "",
+  "image_size": 27577531904,
+  "image_sha256": "7689ac6d8f91faf750a397a4991c2ff26d379833c274616e5e50b17695c7cefa",
+  "root": "/data",
+  "notes": "Wartosci potwierdzone recznie 2026-09-24/26. Sciezka obrazu i wartosci identyfikujace (konta, telefon, JID) sa zredagowane; ich dokladne odpowiedniki mieszcza sie w cases/<case>.local.json, ktory wczytuje zakres scope=full.",
+  "checks": [
+    {
+      "id": "image.superblock",
+      "module": "image_info",
+      "scopes": [
+        "image",
+        "all"
+      ],
+      "note": "geometria, flagi i atrybuty rozszerzone ext4",
+      "params": {
+        "hash": false
+      },
+      "expect": [
+        {
+          "path": "data.geometry.block_size",
+          "equals": 4096
+        },
+        {
+          "path": "data.geometry.blocks_count",
+          "equals": 6732790
+        },
+        {
+          "path": "data.geometry.inodes_count",
+          "equals": 1687552
+        },
+        {
+          "path": "data.geometry.inode_size",
+          "equals": 256
+        },
+        {
+          "path": "data.geometry.groups",
+          "equals": 206
+        },
+        {
+          "path": "data.geometry.size_bytes",
+          "equals": 27577507840
+        },
+        {
+          "path": "data.flags.has_extents",
+          "equals": true
+        },
+        {
+          "path": "data.flags.has_inline_data",
+          "equals": false
+        },
+        {
+          "path": "data.flags.has_metadata_csum",
+          "equals": false
+        },
+        {
+          "path": "data.flags.has_dir_index",
+          "equals": false
+        },
+        {
+          "path": "data.flags.recover_needed",
+          "equals": true
+        },
+        {
+          "path": "data.state.state",
+          "equals": 1
+        },
+        {
+          "path": "data.state.state_name",
+          "equals": "clean"
+        },
+        {
+          "path": "data.state.uuid",
+          "equals": "57f8f4bcabf4655fbf67946fc0f9f25b"
+        },
+        {
+          "path": "#0.size_bytes",
+          "equals": 27577531904,
+          "note": "rozmiar pliku obrazu (partycja jest nieco wieksza niz fs)"
+        },
+        {
+          "path": "data.state.free_blocks",
+          "equals": 2494472
+        },
+        {
+          "path": "data.state.free_inodes",
+          "equals": 1536876
+        },
+        {
+          "path": "data.state.reserved_blocks",
+          "equals": 32768
+        },
+        {
+          "path": "data.state.journal_inode",
+          "equals": 8
+        },
+        {
+          "path": "data.state.last_orphan",
+          "equals": 229666
+        },
+        {
+          "path": "data.state.extra_isize",
+          "equals": 28
+        },
+        {
+          "path": "data.state.fs_flags",
+          "equals": "0x00000002"
+        },
+        {
+          "path": "data.flags.features",
+          "equals": [
+            "HAS_JOURNAL",
+            "EXT_ATTR",
+            "RESIZE_INODE",
+            "FILETYPE",
+            "RECOVER",
+            "EXTENTS",
+            "SPARSE_SUPER",
+            "LARGE_FILE",
+            "UNINIT_BG"
+          ]
+        },
+        {
+          "path": "data.flags.has_64bit",
+          "equals": false
+        },
+        {
+          "path": "inodes_with_block",
+          "equals": 3
+        },
+        {
+          "path": "scanned",
+          "equals": 1687552
+        },
+        {
+          "path": "selinux_distinct",
+          "equals": 0
+        },
+        {
+          "path": "selinux",
+          "equals": {}
+        },
+        {
+          "path": "names",
+          "equals": [
+            "security.restorecon_last"
+          ]
+        },
+        {
+          "path": "name_counts",
+          "equals": {
+            "security.restorecon_last": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "image.blockmap.password_offsets",
+      "module": "blockmap",
+      "scopes": [
+        "image",
+        "all"
+      ],
+      "note": "offsety haseł należą do Login Data przeglądarki MIUI",
+      "params": {
+        "mode": "lookup",
+        "offset": [
+          13720525449,
+          13720526405
+        ],
+        "scope": [
+          "/data/com.android.browser"
+        ]
+      },
+      "expect": [
+        {
+          "path": "lookups.0.path",
+          "equals": "/data/com.android.browser/app_miui_webview/Login Data"
+        },
+        {
+          "path": "lookups.0.file_offset",
+          "equals": 23177
+        },
+        {
+          "path": "lookups.0.file_size",
+          "equals": 28672
+        },
+        {
+          "path": "lookups.0.block",
+          "equals": 3349737
+        },
+        {
+          "path": "lookups.1.path",
+          "equals": "/data/com.android.browser/app_miui_webview/Login Data"
+        },
+        {
+          "path": "lookups.1.file_offset",
+          "equals": 24133
+        }
+      ]
+    },
+    {
+      "id": "image.extract.sizes",
+      "module": "extract_file",
+      "scopes": [
+        "image",
+        "all"
+      ],
+      "note": "rozmiary plików potwierdzone w sesji",
+      "params": {
+        "path": "/system/users/0/accounts.db,/data/com.android.browser/app_miui_webview/Login Data,/data/com.chrome.dev/app_chrome/Default/History",
+        "sidecars": true
+      },
+      "expect": [
+        {
+          "path": "#0.size",
+          "equals": 282624
+        },
+        {
+          "path": "#0.sha256",
+          "equals": "7ff2e7d9f75c7b5f85bfc541bfd5eeba528b1cf59b562939ed9a063181f7127a"
+        },
+        {
+          "path": "#1.size",
+          "equals": 28672
+        },
+        {
+          "path": "#2.size",
+          "equals": 2097152
+        },
+        {
+          "path": "#0.mtime_utc",
+          "equals": "2026-03-18T07:54:21Z"
+        }
+      ]
+    },
+    {
+      "id": "image.sqlite.accounts",
+      "module": "sqlite_info",
+      "scopes": [
+        "image",
+        "all"
+      ],
+      "note": "accounts.db — 8 tabel, 8 kont, hasło konta com.google = NULL",
+      "params": {
+        "path": "/system/users/0/accounts.db",
+        "sample": 0
+      },
+      "expect": [
+        {
+          "path": "integrity",
+          "equals": "ok"
+        },
+        {
+          "path": "page_size",
+          "equals": 4096
+        },
+        {
+          "path": "tables",
+          "equals": 8
+        }
+      ]
+    },
+    {
+      "id": "image.fscheck.dirty_state",
+      "module": "fs_check",
+      "scopes": [
+        "image",
+        "all"
+      ],
+      "note": "e2fsck -fn: stan po nieczystym odmontowaniu + znaczki epoki zero (ROM)",
+      "params": {},
+      "expect": [
+        {
+          "path": "data.counts.exit_code",
+          "equals": 4
+        },
+        {
+          "path": "data.counts.by_kind.timestamp_pre1970",
+          "gte": 400
+        },
+        {
+          "path": "data.counts.by_kind.free_blocks_count",
+          "gte": 80
+        },
+        {
+          "path": "data.counts.by_kind.unattached_inode",
+          "gte": 1
+        },
+        {
+          "path": "data.counts.by_kind.i_size_mismatch",
+          "equals": 1
+        }
+      ]
+    },
+    {
+      "id": "image.tsk.agreement",
+      "module": "tsk_crosscheck",
+      "scopes": [
+        "image",
+        "all"
+      ],
+      "note": "Sleuth Kit jako drugi czytnik: superblock, wędrówka, metadane, audyt extentów, treść",
+      "params": {
+        "check": "all",
+        "sample": 8,
+        "deleted": false
+      },
+      "expect": [
+        {
+          "path": "data.agreed",
+          "equals": 69
+        },
+        {
+          "path": "data.compared_count",
+          "equals": 69
+        },
+        {
+          "path": "data.disagreed_count",
+          "equals": 0
+        },
+        {
+          "path": "data.superblock.groups_total.inodes",
+          "equals": 1687552
+        },
+        {
+          "path": "data.superblock.groups_total.blocks",
+          "equals": 6732790
+        },
+        {
+          "path": "data.superblock.uuid_raw",
+          "equals": "57f8f4bcabf4655fbf67946fc0f9f25b"
+        },
+        {
+          "path": "data.superblock.uuid_guid",
+          "equals": "5bf2f9c06f9467bf5f65f4abbcf4f857"
+        },
+        {
+          "path": "data.superblock.uuid_tsk",
+          "equals": "5bf2f9c06f9467bf5f65f4abbcf4f857"
+        },
+        {
+          "path": "data.superblock.fs_type",
+          "equals": "Ext4"
+        },
+        {
+          "path": "data.traversal.live",
+          "equals": 150668
+        },
+        {
+          "path": "data.traversal.parsed",
+          "equals": 202593
+        },
+        {
+          "path": "data.traversal.virtual",
+          "equals": 1
+        },
+        {
+          "path": "data.traversal.by_type.regular",
+          "equals": 130724
+        },
+        {
+          "path": "data.traversal.by_type.directory",
+          "equals": 19675
+        },
+        {
+          "path": "data.inodes.sample",
+          "equals": 8
+        },
+        {
+          "path": "data.inodes.mismatched",
+          "equals": 0
+        },
+        {
+          "path": "data.inodes.times_skipped",
+          "equals": 0
+        },
+        {
+          "path": "data.content.sample",
+          "equals": 8
+        },
+        {
+          "path": "data.content.identical",
+          "equals": 8
+        },
+        {
+          "path": "data.content.differing",
+          "equals": 0
+        },
+        {
+          "path": "data.content.unread",
+          "equals": 0
+        },
+        {
+          "path": "data.extents.sample",
+          "equals": 8
+        },
+        {
+          "path": "data.extents.i_blocks_mismatch",
+          "equals": 0
+        },
+        {
+          "path": "data.extents.extent_out_of_range",
+          "equals": 0
+        },
+        {
+          "path": "data.extents.logical_holes",
+          "equals": 0
+        },
+        {
+          "path": "data.extents.tsk_mismatch",
+          "equals": 0
+        },
+        {
+          "path": "data.extents.sectors_per_block",
+          "equals": 8
+        }
+      ]
+    },
+    {
+      "id": "image.tsk.coverage",
+      "module": "tsk_crosscheck",
+      "scopes": [
+        "image",
+        "all"
+      ],
+      "note": "ile wpisów usuniętych i nieużytych inodów nasz reader nie pokazuje",
+      "params": {
+        "check": "coverage"
+      },
+      "expect": [
+        {
+          "path": "data.coverage.unlinked_entries",
+          "equals": 51924
+        },
+        {
+          "path": "data.coverage.unlinked_reallocated",
+          "equals": 31022
+        },
+        {
+          "path": "data.coverage.unlinked_by_type.regular",
+          "equals": 49673
+        },
+        {
+          "path": "data.coverage.unlinked_by_type.directory",
+          "equals": 2185
+        },
+        {
+          "path": "data.coverage.unlinked_by_type.unknown",
+          "equals": 64
+        },
+        {
+          "path": "data.coverage.unallocated_inodes",
+          "equals": 752047
+        },
+        {
+          "path": "data.coverage.with_data",
+          "equals": 381
+        },
+        {
+          "path": "data.coverage.total_size",
+          "equals": 6507622
+        },
+        {
+          "path": "data.coverage.max_size",
+          "equals": 986914
+        },
+        {
+          "path": "data.coverage.free_inodes_superblock",
+          "equals": 1536876
+        }
+      ]
+    },
+    {
+      "id": "image.ext4_selftest",
+      "module": "ext4_selftest",
+      "scopes": [
+        "image",
+        "all"
+      ],
+      "note": "syntetyczne obrazy mke2fs: geometria wobec dumpe2fs, wymuszenie odmowy, fixture xattr recznie, rozpoznawanie formatow, samotest EROFS wobec dump.erofs, samotest F2FS wobec dump.f2fs, samotest przestrzeni nieprzydzielonej wobec dumpe2fs i blkls, samotest wyrzeźbienia na plikach usunietych debugfs rm (bajt w bajt) plus fixture rekorda katalogowego pochlonietego",
+      "params": {
+        "variants": [
+          "ext2",
+          "blk1k",
+          "blk2k",
+          "blk4k",
+          "bit64",
+          "desc32",
+          "metabg",
+          "mcsum",
+          "inline",
+          "uninitbg"
+        ]
+      },
+      "expect": [
+        {
+          "path": "data.variants",
+          "equals": 10
+        },
+        {
+          "path": "data.accepted",
+          "equals": 9,
+          "note": "9 z 10 wariantow (ext2 odrzucony, uninitbg dodany w turze 17)"
+        },
+        {
+          "path": "data.refused",
+          "equals": 1
+        },
+        {
+          "path": "data.silent",
+          "equals": 0
+        },
+        {
+          "path": "data.unexpected",
+          "equals": []
+        },
+        {
+          "path": "data.geometry_mismatched",
+          "equals": []
+        },
+        {
+          "path": "data.results.0.name",
+          "equals": "ext2"
+        },
+        {
+          "path": "data.results.0.accepted",
+          "equals": false
+        },
+        {
+          "path": "data.results.0.refused",
+          "equals": true
+        },
+        {
+          "path": "data.results.0.refused_at",
+          "equals": "traverse"
+        },
+        {
+          "path": "data.results.0.error",
+          "contains": "0xF30A"
+        },
+        {
+          "path": "data.results.5.name",
+          "equals": "desc32"
+        },
+        {
+          "path": "data.results.5.geometry.desc_size",
+          "equals": 32
+        },
+        {
+          "path": "data.results.5.geometry_agrees",
+          "equals": true
+        },
+        {
+          "path": "data.results.5.features",
+          "not_contains": "64BIT"
+        },
+        {
+          "path": "data.results.4.name",
+          "equals": "bit64"
+        },
+        {
+          "path": "data.results.4.geometry.desc_size",
+          "equals": 64
+        },
+        {
+          "path": "data.results.4.features",
+          "contains": "64BIT"
+        },
+        {
+          "path": "data.results.4.features_in_dumpe2fs",
+          "contains": "64bit"
+        },
+        {
+          "path": "data.results.6.features",
+          "contains": "META_BG"
+        },
+        {
+          "path": "data.results.6.features_in_dumpe2fs",
+          "contains": "meta_bg"
+        },
+        {
+          "path": "data.results.7.features",
+          "contains": "METADATA_CSUM"
+        },
+        {
+          "path": "data.results.7.features_in_dumpe2fs",
+          "contains": "metadata_csum"
+        },
+        {
+          "path": "data.results.8.features",
+          "contains": "INLINE_DATA"
+        },
+        {
+          "path": "data.results.8.features_in_dumpe2fs",
+          "contains": "inline_data"
+        },
+        {
+          "path": "data.results.3.geometry_agrees",
+          "equals": true
+        },
+        {
+          "path": "data.results.2.geometry.block_size",
+          "equals": 2048
+        },
+        {
+          "path": "data.results.1.geometry.block_size",
+          "equals": 1024
+        },
+        {
+          "path": "data.xattr_fixture.ok",
+          "equals": true
+        },
+        {
+          "path": "data.xattr_fixture.host",
+          "equals": "desc32"
+        },
+        {
+          "path": "data.xattr_fixture.name",
+          "equals": "security.selinux"
+        },
+        {
+          "path": "data.xattr_fixture.value_bytes",
+          "equals": 32
+        },
+        {
+          "path": "data.xattr_fixture.block_bytes",
+          "equals": 88
+        },
+        {
+          "path": "data.xattr_fixture.read_back",
+          "contains": "u:object_r:forensic_selftest:s0"
+        },
+        {
+          "path": "data.xattr_fixture.text_property",
+          "equals": "u:object_r:forensic_selftest:s0"
+        },
+        {
+          "path": "data.xattr_fixture.i_file_acl_debugfs",
+          "matches": "^[1-9][0-9]*$"
+        },
+        {
+          "path": "data.formats.ok",
+          "equals": true
+        },
+        {
+          "path": "data.formats.wrong",
+          "equals": []
+        },
+        {
+          "path": "data.formats.unknown_kind",
+          "equals": "nieznany"
+        },
+        {
+          "path": "data.formats.results.0.kind",
+          "equals": "squashfs"
+        },
+        {
+          "path": "data.formats.results.0.offset",
+          "equals": 0
+        },
+        {
+          "path": "data.formats.results.1.kind",
+          "equals": "erofs"
+        },
+        {
+          "path": "data.formats.results.1.offset",
+          "equals": 1024
+        },
+        {
+          "path": "data.formats.results.1.refusal",
+          "contains": "EROFS"
+        },
+        {
+          "path": "data.formats.results.2.kind",
+          "equals": "f2fs"
+        },
+        {
+          "path": "data.formats.results.2.offset",
+          "equals": 1024
+        },
+        {
+          "path": "data.formats.results.2.refusal",
+          "contains": "F2FS"
+        },
+        {
+          "path": "data.formats.results.3.kind",
+          "equals": "ext"
+        },
+        {
+          "path": "data.formats.results.3.offset",
+          "equals": 1080
+        },
+        {
+          "path": "data.formats.results.3.readable",
+          "equals": true
+        },
+        {
+          "path": "data.erofs.available",
+          "equals": true
+        },
+        {
+          "path": "data.erofs.ok",
+          "equals": true
+        },
+        {
+          "path": "data.erofs.builds.0.label",
+          "equals": "plain"
+        },
+        {
+          "path": "data.erofs.builds.0.tree_agrees",
+          "equals": true
+        },
+        {
+          "path": "data.erofs.builds.0.tree_ours",
+          "equals": 5
+        },
+        {
+          "path": "data.erofs.builds.0.content_same",
+          "equals": 3
+        },
+        {
+          "path": "data.erofs.builds.0.content_refused",
+          "equals": 0
+        },
+        {
+          "path": "data.erofs.builds.0.coverage.contents_complete",
+          "equals": true
+        },
+        {
+          "path": "data.erofs.builds.1.label",
+          "equals": "lz4"
+        },
+        {
+          "path": "data.erofs.builds.1.tree_agrees",
+          "equals": true
+        },
+        {
+          "path": "data.erofs.builds.1.content_refused",
+          "equals": 1
+        },
+        {
+          "path": "data.erofs.builds.1.coverage.contents_complete",
+          "equals": false
+        },
+        {
+          "path": "data.erofs.builds.1.coverage.compressed",
+          "equals": 1
+        },
+        {
+          "path": "data.formats.results.1.reader",
+          "equals": "erofs"
+        },
+        {
+          "path": "data.formats.results.2.reader",
+          "equals": "f2fs"
+        },
+        {
+          "path": "data.formats.results.0.reader",
+          "equals": ""
+        },
+        {
+          "path": "data.formats.results.3.reader",
+          "equals": ""
+        },
+        {
+          "path": "data.f2fs.available",
+          "equals": true
+        },
+        {
+          "path": "data.f2fs.ok",
+          "equals": true
+        },
+        {
+          "path": "data.f2fs.builds.0.label",
+          "equals": "small"
+        },
+        {
+          "path": "data.f2fs.builds.0.bytes",
+          "equals": 67108864
+        },
+        {
+          "path": "data.f2fs.builds.0.block_size",
+          "equals": 4096
+        },
+        {
+          "path": "data.f2fs.builds.0.nat_per_block",
+          "equals": 455,
+          "note": "455 wpisow NAT po 9 B mieści sie w 4095 B — co dziewiasty wpis nie trafia tam, gdzie podaje arytmetyka bajtowa"
+        },
+        {
+          "path": "data.f2fs.builds.0.geometry_agrees",
+          "equals": true
+        },
+        {
+          "path": "data.f2fs.builds.0.dump_fields",
+          "equals": 57,
+          "note": "liczba pol nazwanych w dump.f2fs -d 1, z ktorymi porownujemy superblok i checkpoint"
+        },
+        {
+          "path": "data.f2fs.builds.0.superblock.block_count",
+          "equals": 16384
+        },
+        {
+          "path": "data.f2fs.builds.0.superblock.segment_count",
+          "equals": 31
+        },
+        {
+          "path": "data.f2fs.builds.0.superblock.section_count",
+          "equals": 24
+        },
+        {
+          "path": "data.f2fs.builds.0.superblock.nat_blkaddr",
+          "equals": 2560
+        },
+        {
+          "path": "data.f2fs.builds.0.superblock.main_blkaddr",
+          "equals": 4096
+        },
+        {
+          "path": "data.f2fs.builds.0.checkpoint.ckpt_flags",
+          "equals": "0x00000181"
+        },
+        {
+          "path": "data.f2fs.builds.0.checkpoint.valid_node_count",
+          "equals": 6
+        },
+        {
+          "path": "data.f2fs.builds.0.checkpoint.valid_inode_count",
+          "equals": 6
+        },
+        {
+          "path": "data.f2fs.builds.0.checkpoint.pack_count",
+          "equals": 2
+        },
+        {
+          "path": "data.f2fs.builds.0.tree_agrees",
+          "equals": true
+        },
+        {
+          "path": "data.f2fs.builds.0.tree_ours",
+          "equals": 5
+        },
+        {
+          "path": "data.f2fs.builds.0.inodes_sampled",
+          "equals": 5
+        },
+        {
+          "path": "data.f2fs.builds.0.inode_sampling",
+          "equals": "wszystkie"
+        },
+        {
+          "path": "data.f2fs.builds.0.inodes_agree",
+          "equals": true
+        },
+        {
+          "path": "data.f2fs.builds.0.inode_fields",
+          "equals": 60
+        },
+        {
+          "path": "data.f2fs.builds.0.content_same",
+          "equals": 4
+        },
+        {
+          "path": "data.f2fs.builds.0.content_wrong",
+          "equals": 0
+        },
+        {
+          "path": "data.f2fs.builds.0.dirents",
+          "equals": 9
+        },
+        {
+          "path": "data.f2fs.builds.0.dirents_hash_checked",
+          "equals": 9,
+          "note": "hash TEA policzony z nazwy wlasnie odczytanej musi sie zgadzac z zapisanym"
+        },
+        {
+          "path": "data.f2fs.builds.0.coverage.contents_complete",
+          "equals": true
+        },
+        {
+          "path": "data.f2fs.builds.1.label",
+          "equals": "big"
+        },
+        {
+          "path": "data.f2fs.builds.1.bytes",
+          "equals": 536870912
+        },
+        {
+          "path": "data.f2fs.builds.1.superblock.block_count",
+          "equals": 131072
+        },
+        {
+          "path": "data.f2fs.builds.1.superblock.segment_count",
+          "equals": 255
+        },
+        {
+          "path": "data.f2fs.builds.1.superblock.section_count",
+          "equals": 248
+        },
+        {
+          "path": "data.f2fs.builds.1.checkpoint.valid_node_count",
+          "equals": 312
+        },
+        {
+          "path": "data.f2fs.builds.1.checkpoint.valid_inode_count",
+          "equals": 311
+        },
+        {
+          "path": "data.f2fs.builds.1.tree_agrees",
+          "equals": true
+        },
+        {
+          "path": "data.f2fs.builds.1.tree_ours",
+          "equals": 310,
+          "note": "310 wpisow zrodlowego drzewa: 300 plikow w katalogu dwublokowym, plik 5 MiB za wezlem bezposrednim, dwa katalogi, symlink"
+        },
+        {
+          "path": "data.f2fs.builds.1.inodes_total",
+          "equals": 310
+        },
+        {
+          "path": "data.f2fs.builds.1.inodes_sampled",
+          "equals": 24
+        },
+        {
+          "path": "data.f2fs.builds.1.inodes_agree",
+          "equals": true
+        },
+        {
+          "path": "data.f2fs.builds.1.inode_fields",
+          "equals": 288
+        },
+        {
+          "path": "data.f2fs.builds.1.content_same",
+          "equals": 306
+        },
+        {
+          "path": "data.f2fs.builds.1.content_wrong",
+          "equals": 0
+        },
+        {
+          "path": "data.f2fs.builds.1.content_mismatch",
+          "equals": []
+        },
+        {
+          "path": "data.f2fs.builds.1.dirents",
+          "equals": 320
+        },
+        {
+          "path": "data.f2fs.builds.1.dirents_hash_checked",
+          "equals": 320
+        },
+        {
+          "path": "data.f2fs.builds.1.dirents_hashes_agree",
+          "equals": true
+        },
+        {
+          "path": "data.f2fs.builds.1.coverage.files",
+          "equals": 306
+        },
+        {
+          "path": "data.f2fs.builds.1.coverage.dirs",
+          "equals": 5
+        },
+        {
+          "path": "data.f2fs.builds.1.coverage.holes",
+          "equals": 0
+        },
+        {
+          "path": "data.f2fs.builds.1.coverage.walk_errors",
+          "equals": 0
+        },
+        {
+          "path": "data.f2fs.builds.1.coverage.names_complete",
+          "equals": true
+        },
+        {
+          "path": "data.f2fs.builds.1.coverage.contents_complete",
+          "equals": true
+        },
+        {
+          "path": "data.f2fs.inline_dentry.ok",
+          "equals": true
+        },
+        {
+          "path": "data.f2fs.inline_dentry.inline_flags",
+          "equals": "0x15",
+          "note": "INLINE_XATTR|INLINE_DATA|INLINE_DENTRY|INLINE_DOTS ustawione recznie — mkfs.f2fs i sload.f2fs takiego katalogu nie tworza"
+        },
+        {
+          "path": "data.f2fs.inline_dentry.names",
+          "equals": [
+            ".",
+            "..",
+            "inline_child"
+          ]
+        },
+        {
+          "path": "data.f2fs.inline_dentry.entry_count",
+          "equals": 182,
+          "note": "3488 B obszaru inline xattr: 23 B bitmapy, 7 B rezerwy, 182 wpisy"
+        },
+        {
+          "path": "data.f2fs.inline_dentry.bitmap_bytes",
+          "equals": 23
+        },
+        {
+          "path": "data.f2fs.inline_dentry.reserved_bytes",
+          "equals": 7
+        },
+        {
+          "path": "data.f2fs.inline_dentry.layout_offset",
+          "equals": 364
+        },
+        {
+          "path": "data.f2fs.inline_dentry.hashes_checked",
+          "equals": true
+        },
+        {
+          "path": "data.f2fs.inline_dentry.child_ino_matches",
+          "equals": true
+        },
+        {
+          "path": "data.f2fs.inline_dentry.child_walked",
+          "equals": true
+        },
+        {
+          "path": "data.f2fs.encrypted.ok",
+          "equals": true,
+          "note": "poziom szyfrowania 4 ustawiony recznie: czytnik ma odmowic nazw, a nie podac szyfrogram jako nazwy"
+        },
+        {
+          "path": "data.f2fs.encrypted.level",
+          "equals": 4
+        },
+        {
+          "path": "data.f2fs.encrypted.refusal",
+          "contains": "szyfrowania"
+        },
+        {
+          "path": "data.f2fs.compressed.ok",
+          "equals": true,
+          "note": "i_flags 0x4 ustawione recznie: czytnik ma odmowic tresci, nie dekompresowac"
+        },
+        {
+          "path": "data.f2fs.compressed.flag",
+          "equals": "0x00000004"
+        },
+        {
+          "path": "data.f2fs.compressed.coverage_refused",
+          "equals": 1
+        },
+        {
+          "path": "data.f2fs.compressed.refusal",
+          "contains": "skompresowany"
+        },
+        {
+          "path": "data.f2fs.dindirect.ok",
+          "equals": true
+        },
+        {
+          "path": "data.f2fs.dindirect.addrs_per_inode",
+          "equals": 873,
+          "note": "923 minus 50 slow zajetych przez atrybuty inline xattr; zalozenie 923 czytalo by srodkowal 5 MiB pliku z innego miejsca"
+        },
+        {
+          "path": "data.f2fs.dindirect.limit_blocks",
+          "equals": 2075557
+        },
+        {
+          "path": "data.f2fs.dindirect.last_reachable",
+          "equals": true
+        },
+        {
+          "path": "data.f2fs.dindirect.has_limit",
+          "equals": true
+        },
+        {
+          "path": "data.f2fs.dindirect.refusal",
+          "contains": "podwójnie"
+        },
+        {
+          "path": "data.results.9.name",
+          "equals": "uninitbg"
+        },
+        {
+          "path": "data.results.9.accepted",
+          "equals": true
+        },
+        {
+          "path": "data.results.9.features",
+          "contains": "UNINIT_BG"
+        },
+        {
+          "path": "data.results.9.features_in_dumpe2fs",
+          "contains": "uninit_bg"
+        },
+        {
+          "path": "data.free_space.ok",
+          "equals": true
+        },
+        {
+          "path": "data.free_space.checked",
+          "equals": 10
+        },
+        {
+          "path": "data.free_space.blkls",
+          "equals": true
+        },
+        {
+          "path": "data.free_space.variants.0.name",
+          "equals": "ext2"
+        },
+        {
+          "path": "data.free_space.variants.0.free_blocks",
+          "equals": 60124
+        },
+        {
+          "path": "data.free_space.variants.0.dumpe2fs_agrees",
+          "equals": true
+        },
+        {
+          "path": "data.free_space.variants.0.blkls_count_agrees",
+          "equals": true
+        },
+        {
+          "path": "data.free_space.variants.0.overlap",
+          "equals": 7,
+          "note": "7 nakladajacych sie zakresow metadanych, wszystkie na ostatnim bloku zakresu"
+        },
+        {
+          "path": "data.free_space.variants.0.overlap_interior",
+          "equals": 0
+        },
+        {
+          "path": "data.free_space.variants.1.name",
+          "equals": "blk1k"
+        },
+        {
+          "path": "data.free_space.variants.1.uninit_groups",
+          "equals": [
+            4,
+            6
+          ]
+        },
+        {
+          "path": "data.free_space.variants.1.uninit_feature",
+          "equals": false,
+          "note": "mke2fs stawia BLOCK_UNINIT w grupach 4 i 6, ale cechy uninit_bg nie ustawia"
+        },
+        {
+          "path": "data.free_space.variants.1.uninit_by_definition",
+          "equals": false
+        },
+        {
+          "path": "data.free_space.variants.2.name",
+          "equals": "blk2k"
+        },
+        {
+          "path": "data.free_space.variants.2.block_size",
+          "equals": 2048
+        },
+        {
+          "path": "data.free_space.variants.2.free_blocks",
+          "equals": 26448
+        },
+        {
+          "path": "data.free_space.variants.3.free_blocks",
+          "equals": 14287
+        },
+        {
+          "path": "data.free_space.variants.4.free_blocks",
+          "equals": 14287
+        },
+        {
+          "path": "data.free_space.variants.5.free_blocks",
+          "equals": 14290
+        },
+        {
+          "path": "data.free_space.variants.6.free_blocks",
+          "equals": 57275
+        },
+        {
+          "path": "data.free_space.variants.6.overlap",
+          "equals": 4
+        },
+        {
+          "path": "data.free_space.variants.7.free_blocks",
+          "equals": 55991
+        },
+        {
+          "path": "data.free_space.variants.8.free_blocks",
+          "equals": 55992
+        },
+        {
+          "path": "data.free_space.variants.9.name",
+          "equals": "uninitbg"
+        },
+        {
+          "path": "data.free_space.variants.9.block_size",
+          "equals": 1024
+        },
+        {
+          "path": "data.free_space.variants.9.free_blocks",
+          "equals": 55996
+        },
+        {
+          "path": "data.free_space.variants.9.zero_bits",
+          "equals": 55996
+        },
+        {
+          "path": "data.free_space.variants.9.uninit_feature",
+          "equals": true,
+          "note": "-O uninit_bg ustawia ceche; bez tego mke2fs zostawia same flagi grup"
+        },
+        {
+          "path": "data.free_space.variants.9.uninit_by_definition",
+          "equals": true
+        },
+        {
+          "path": "data.free_space.variants.9.uninit_groups",
+          "equals": [
+            4,
+            6
+          ]
+        },
+        {
+          "path": "data.free_space.variants.9.runs",
+          "equals": 6
+        },
+        {
+          "path": "data.free_space.variants.9.sparse_super_groups",
+          "equals": [
+            0,
+            1,
+            3,
+            5,
+            7
+          ]
+        },
+        {
+          "path": "data.free_space.variants.0.blkls_only_ours",
+          "equals": 1
+        },
+        {
+          "path": "data.free_space.variants.1.blkls_only_ours",
+          "equals": 1
+        },
+        {
+          "path": "data.free_space.variants.2.blkls_only_ours",
+          "equals": 0
+        },
+        {
+          "path": "data.free_space.variants.3.blkls_only_ours",
+          "equals": 0,
+          "note": "przy 4096-bajtowych blokach zbiory sa identyczne; roznice pojawiaja sie tylko przy mniejszych blokach"
+        },
+        {
+          "path": "data.free_space.variants.4.blkls_only_ours",
+          "equals": 0
+        },
+        {
+          "path": "data.free_space.variants.5.blkls_only_ours",
+          "equals": 0
+        },
+        {
+          "path": "data.free_space.variants.6.blkls_only_ours",
+          "equals": 5
+        },
+        {
+          "path": "data.free_space.variants.7.blkls_only_ours",
+          "equals": 1
+        },
+        {
+          "path": "data.free_space.variants.8.blkls_only_ours",
+          "equals": 1
+        },
+        {
+          "path": "data.free_space.variants.9.blkls_only_ours",
+          "equals": 1
+        },
+        {
+          "path": "data.carve_test.ok",
+          "equals": true
+        },
+        {
+          "path": "data.carve_test.available",
+          "equals": true
+        },
+        {
+          "path": "data.carve_test.content.kinds",
+          "equals": [
+            "gzip",
+            "png"
+          ],
+          "note": "dokladnie te dwa; plik bez sygnatury i plik z sama sygnatura PNG za nia nie daja sie wyrzebic"
+        },
+        {
+          "path": "data.carve_test.content.png_recovered_exact",
+          "equals": true
+        },
+        {
+          "path": "data.carve_test.content.gzip_recovered_exact",
+          "equals": true
+        },
+        {
+          "path": "data.carve_test.content.rejected",
+          "equals": {
+            "png": 1
+          },
+          "note": "impostor.png — sygnatura PNG, potem smieci; odrzucony przez walidacje chunkow"
+        },
+        {
+          "path": "data.carve_test.names.ok",
+          "equals": true
+        },
+        {
+          "path": "data.carve_test.names.chain_names",
+          "equals": [],
+          "note": "pochloniety rekord konczy lancuch, wiec zadna z trzech nazw nie jest w lancuchu"
+        },
+        {
+          "path": "data.carve_test.names.window_names",
+          "equals": [
+            "unlinked_one.txt",
+            "unlinked_three.dat",
+            "unlinked_two.log"
+          ]
+        },
+        {
+          "path": "data.carve_test.names.chain_total",
+          "equals": 0
+        },
+        {
+          "path": "data.carve_test.names.window_total",
+          "equals": 3
+        }
+      ]
+    },
+    {
+      "id": "image.free_space",
+      "module": "free_space",
+      "scopes": [
+        "image",
+        "all"
+      ],
+      "note": "7.5 krok 2: przestrzen nieprzydzielona z bitmap — ile, jakie luki, ile nie jest zerami; zero odzyskanych plikow",
+      "params": {
+        "scan": "sample",
+        "scan_blocks": 100000,
+        "list_blocks": 64,
+        "dump": false
+      },
+      "expect": [
+        {
+          "path": "data.unallocated_blocks",
+          "equals": 2494484,
+          "note": "bitmapy blokow; zgodne z blkls (10217406464 B) i z e2fsck -fn (counted=2494484)"
+        },
+        {
+          "path": "data.unallocated_bytes",
+          "equals": 10217406464
+        },
+        {
+          "path": "data.unallocated_human",
+          "equals": "9.52 GiB"
+        },
+        {
+          "path": "data.blocks_total",
+          "equals": 6732790
+        },
+        {
+          "path": "data.free_share",
+          "equals": 0.370498
+        },
+        {
+          "path": "data.runs",
+          "equals": 30107
+        },
+        {
+          "path": "data.longest_run",
+          "equals": 967
+        },
+        {
+          "path": "data.longest_run_bytes",
+          "equals": 3960832
+        },
+        {
+          "path": "data.longest_run_first_block",
+          "equals": 1074732
+        },
+        {
+          "path": "data.run_sizes",
+          "equals": {
+            "1 blok": 6003,
+            "2-8 bloków": 8216,
+            "9-128 bloków": 10082,
+            "129-1024 bloków": 5806
+          }
+        },
+        {
+          "path": "data.counters.from_bitmaps",
+          "equals": 2494484
+        },
+        {
+          "path": "data.counters.from_superblock",
+          "equals": 2494472
+        },
+        {
+          "path": "data.counters.from_group_descriptors",
+          "equals": 2510845
+        },
+        {
+          "path": "data.counters.bitmaps_minus_superblock",
+          "equals": 12,
+          "note": "licznik w superbloku jest nieaktualny: obraz ma RECOVER i errors=2"
+        },
+        {
+          "path": "data.counters.bitmaps_minus_groups",
+          "equals": -16361
+        },
+        {
+          "path": "data.counters.authoritative",
+          "equals": "from_bitmaps"
+        },
+        {
+          "path": "data.counters.clean_unmount",
+          "equals": false
+        },
+        {
+          "path": "data.counters.errors",
+          "equals": 2
+        },
+        {
+          "path": "data.uninit.feature",
+          "equals": true
+        },
+        {
+          "path": "data.uninit.groups",
+          "equals": []
+        },
+        {
+          "path": "data.uninit.free_blocks",
+          "equals": 0,
+          "note": "cecha uninit_bg ustawiona, ale zadna grupa nie zglosila BLOCK_UNINIT — wszystkie bitmapy zapisane"
+        },
+        {
+          "path": "data.uninit.by_definition",
+          "equals": false
+        },
+        {
+          "path": "data.uninit.inconsistent_bitmaps",
+          "equals": []
+        },
+        {
+          "path": "data.metadata_overlap",
+          "equals": 0,
+          "note": "zaden blok nieprzydzielony nie jest metadanymi: superblok, GDT, bitmapy, tabele inodow, kopie sparse_super, journal"
+        },
+        {
+          "path": "data.metadata_overlap_interior",
+          "equals": 0
+        },
+        {
+          "path": "data.content.scanned_blocks",
+          "equals": 100000
+        },
+        {
+          "path": "data.content.scanned_fraction",
+          "equals": 0.040088
+        },
+        {
+          "path": "data.content.complete",
+          "equals": false,
+          "note": "probka 4% przestrzeni; pelny przebieg 9,51 GiB to ~3,5 minuty przy 48 MB/s"
+        },
+        {
+          "path": "data.content.zero_blocks",
+          "equals": 99971
+        },
+        {
+          "path": "data.content.nonzero_blocks",
+          "equals": 29
+        },
+        {
+          "path": "data.content.zero_share",
+          "equals": 0.99971
+        },
+        {
+          "path": "data.content.nonzero_estimate",
+          "equals": 723,
+          "note": "ok. 2,82 MiB niezerowosci w 9,52 GiB przestrzeni — z 29 trafien probki"
+        },
+        {
+          "path": "data.files_recovered",
+          "equals": 0
+        },
+        {
+          "path": "data.names_recovered",
+          "equals": 0
+        }
+      ]
+    },
+    {
+      "id": "image.carve",
+      "module": "carve",
+      "scopes": [
+        "image",
+        "all"
+      ],
+      "note": "7.5 krok 3: nazw niepodlinkowanych z blokow katalogowych (okno, nie tylko lancuch) oraz kandydatow tresci z przestrzeni wolnej, kazdy ze stopniem dowodu; zero odzyskanych plikow",
+      "params": {
+        "carve_blocks": 300000,
+        "export_names": 20000,
+        "crosscheck": true
+      },
+      "expect": [
+        {
+          "path": "data.names_total",
+          "equals": 52189,
+          "note": "286 w lancuchu rekordow + 51903 widzianych tylko przez przesuniete okno"
+        },
+        {
+          "path": "data.names_chain_unlinked",
+          "equals": 286
+        },
+        {
+          "path": "data.names_window_only",
+          "equals": 51903
+        },
+        {
+          "path": "data.names_directory_blocks",
+          "equals": 20654
+        },
+        {
+          "path": "data.names_complete",
+          "equals": true
+        },
+        {
+          "path": "data.names_chain_summary.total",
+          "equals": 286
+        },
+        {
+          "path": "data.names_chain_summary.by_kind",
+          "equals": {
+            "file": 281,
+            "dir": 5
+          }
+        },
+        {
+          "path": "data.names_window_summary.total",
+          "equals": 51903
+        },
+        {
+          "path": "data.names_window_summary.distinct_directories",
+          "equals": 11644
+        },
+        {
+          "path": "data.names_window_summary.implausible_file_type",
+          "equals": 3,
+          "note": "typy pliku spoza 0..8 nie moga pochodzic od wpisu, ktory ext4 zapisal — to koszt okna"
+        },
+        {
+          "path": "data.window_positions_rejected",
+          "equals": 216413,
+          "note": "pozycji przeszukanych w oknie i odrzuconych jako nie-nazwa; to pozycje, nie nazwy"
+        },
+        {
+          "path": "data.names_window_summary.top_directories.0.directory",
+          "equals": "/data/com.chrome.dev/cache/Cache"
+        },
+        {
+          "path": "data.names_window_summary.top_directories.0.entries",
+          "equals": 7643
+        },
+        {
+          "path": "data.fls_d.available",
+          "equals": true
+        },
+        {
+          "path": "data.fls_d.count",
+          "equals": 51924,
+          "note": "The Sleuth Kit liczy inaczej: rekord uznaje za usuniety, gdy jego numer inoda wskazuje teraz obiekt innego typu"
+        },
+        {
+          "path": "data.fls_d.reallocated",
+          "equals": 31022
+        },
+        {
+          "path": "data.carve_runs_total",
+          "equals": 30107
+        },
+        {
+          "path": "data.carve_runs_touched",
+          "equals": 6402
+        },
+        {
+          "path": "data.carve_blocks_scanned",
+          "equals": 300000
+        },
+        {
+          "path": "data.carve_coverage_complete",
+          "equals": false,
+          "note": "limit parametru; pelna przestrzen to 2 494 484 bloki"
+        },
+        {
+          "path": "data.carve_zero_blocks",
+          "equals": 299938,
+          "note": "99,979% przeszukanych blokow to same zera"
+        },
+        {
+          "path": "data.candidates_total",
+          "equals": 3
+        },
+        {
+          "path": "data.candidates_complete",
+          "equals": 1
+        },
+        {
+          "path": "data.candidates_truncated",
+          "equals": 2
+        },
+        {
+          "path": "data.candidates_by_grade",
+          "equals": {
+            "magic": 2,
+            "validated": 1
+          }
+        },
+        {
+          "path": "data.candidates_by_kind",
+          "equals": {
+            "android-oat": 1,
+            "dex": 1,
+            "elf": 1
+          },
+          "note": "najwieksza ciagla masa niezerowych bajtow w przestrzeni wolnej obrazu to usuniety obraz OAT z /system"
+        },
+        {
+          "path": "data.candidates_rejected_by_kind",
+          "equals": {
+            "jpeg": 143
+          },
+          "note": "143 sygnatury JPEG, ktore nie przeszly walidacji — koszt filtru, raportowany"
+        },
+        {
+          "path": "data.candidates_rejected_total",
+          "equals": 143
+        },
+        {
+          "path": "data.files_recovered",
+          "equals": 0
+        },
+        {
+          "path": "data.names_recovered",
+          "equals": 0
+        },
+        {
+          "path": "data.candidates_attributed_to_files",
+          "equals": 0
+        },
+        {
+          "path": "data.candidates_have_names",
+          "equals": false
+        },
+        {
+          "path": "data.step",
+          "equals": "7.5 krok 3 z 3"
+        }
+      ]
+    },
+    {
+      "id": "image.deleted_files",
+      "module": "deleted_files",
+      "scopes": [
+        "image",
+        "all"
+      ],
+      "note": "inody z dtime != 0: co usunieto, kiedy, jak duze; tresci nieosiagalne",
+      "params": {
+        "limit": 50,
+        "count_all": true
+      },
+      "expect": [
+        {
+          "path": "data.deleted_total",
+          "equals": 752043
+        },
+        {
+          "path": "data.free_inodes_bitmap",
+          "equals": 1536874
+        },
+        {
+          "path": "data.free_inodes_superblock",
+          "equals": 1536876
+        },
+        {
+          "path": "data.free_inodes_delta",
+          "equals": -2
+        },
+        {
+          "path": "data.with_stated_size",
+          "equals": 378
+        },
+        {
+          "path": "data.with_stated_bytes",
+          "equals": 6507553
+        },
+        {
+          "path": "data.kinds",
+          "equals": {
+            "file": 378
+          }
+        },
+        {
+          "path": "data.names_recovered",
+          "equals": 0
+        },
+        {
+          "path": "data.recoverable_sampled",
+          "equals": 0
+        },
+        {
+          "path": "data.recoverability_sampled",
+          "equals": 200
+        },
+        {
+          "path": "data.deletion_years.2026",
+          "equals": 1
+        },
+        {
+          "path": "data.deletion_years.2022",
+          "equals": 248
+        }
+      ]
+    },
+    {
+      "id": "accounts.accounts_db",
+      "module": "accounts_db",
+      "scopes": [
+        "accounts",
+        "all"
+      ],
+      "note": "accounts.db: 8 kont, hasla tylko dla kont legacy, terminy tokenow w extras",
+      "params": {},
+      "expect": [
+        {
+          "path": "data.account_count",
+          "equals": 8
+        },
+        {
+          "path": "data.by_type.'com.google'",
+          "equals": 1
+        },
+        {
+          "path": "data.by_type.'com.google.android.gm.legacyimap'",
+          "equals": 2
+        },
+        {
+          "path": "data.by_type.'com.whatsapp'",
+          "equals": 1
+        },
+        {
+          "path": "data.by_type.'com.facebook.messenger'",
+          "equals": 1
+        },
+        {
+          "path": "data.authtokens_rows",
+          "equals": 0
+        },
+        {
+          "path": "data.extras_rows",
+          "equals": 424
+        },
+        {
+          "path": "data.token_expiries.last.expires_unix",
+          "equals": 1646132854
+        },
+        {
+          "path": "data.token_expiries.last.expires_utc",
+          "equals": "2022-03-01T11:07:34Z"
+        },
+        {
+          "path": "data.token_expiries.first.expires_utc",
+          "equals": "2016-06-21T22:25:24Z"
+        }
+      ]
+    },
+    {
+      "id": "accounts.authtoken_journal",
+      "module": "authtoken_journal",
+      "scopes": [
+        "accounts",
+        "all"
+      ],
+      "note": "rollback journal z wyzerowanym naglowkiem: 38 klatek, 87 tokenow Google",
+      "params": {},
+      "expect": [
+        {
+          "path": "data.journal.header_valid",
+          "equals": false
+        },
+        {
+          "path": "data.journal.frames",
+          "equals": 38
+        },
+        {
+          "path": "data.journal.page_size",
+          "equals": 4096
+        },
+        {
+          "path": "data.journal.size",
+          "equals": 156464
+        },
+        {
+          "path": "data.google_oauth2",
+          "equals": 87
+        },
+        {
+          "path": "data.unique_tokens",
+          "equals": 88
+        },
+        {
+          "path": "data.records.frames",
+          "equals": 38
+        },
+        {
+          "path": "data.gmail_scope_tokens",
+          "equals": 12
+        },
+        {
+          "path": "data.gmail_authenticator_tokens",
+          "equals": 15
+        }
+      ]
+    },
+    {
+      "id": "accounts.login_data",
+      "module": "login_data",
+      "scopes": [
+        "accounts",
+        "all"
+      ],
+      "note": "Login Data przegladarki MIUI: 3 hasla jawne, bez prefiksu v10/v20",
+      "params": {},
+      "expect": [
+        {
+          "path": "data.plaintext_passwords",
+          "equals": 3
+        },
+        {
+          "path": "data.databases.0.count",
+          "equals": 5
+        },
+        {
+          "path": "data.databases.0.plaintext",
+          "equals": 3
+        },
+        {
+          "path": "data.databases.0.empty",
+          "equals": 2
+        },
+        {
+          "path": "data.databases.1.count",
+          "equals": 0
+        },
+        {
+          "path": "data.entries.0.origin_url",
+          "matches": "^https?://[^\\s]+$",
+          "note": "adres z historii przegladarki wskazuje operatora i jest dana osobowa; publiczny plik przypina tylko protokol i ksztalt, dokladny adres w cases/redmi3.local.json"
+        }
+      ]
+    },
+    {
+      "id": "accounts.cookies_webview",
+      "module": "cookies_webview",
+      "scopes": [
+        "accounts",
+        "all"
+      ],
+      "note": "ciasteczka sesyjne FB jawne, xs rozwiniete",
+      "params": {},
+      "expect": [
+        {
+          "path": "data.databases.0.count",
+          "equals": 648
+        },
+        {
+          "path": "data.databases.1.count",
+          "equals": 3230
+        },
+        {
+          "path": "data.databases.0.schema",
+          "contains": "encrypted_value"
+        }
+      ]
+    },
+    {
+      "id": "accounts.chrome_history",
+      "module": "chrome_history",
+      "scopes": [
+        "accounts",
+        "all"
+      ],
+      "note": "historia Chrome: 1995 URL, 5219 wizyt, 759 zapytan, konto w adresach m.facebook.com",
+      "params": {},
+      "expect": [
+        {
+          "path": "data.databases.0.counts.urls",
+          "equals": 1995
+        },
+        {
+          "path": "data.databases.0.counts.visits",
+          "equals": 5219
+        },
+        {
+          "path": "data.databases.0.counts.keyword_search_terms",
+          "equals": 759
+        },
+        {
+          "path": "data.databases.0.counts.downloads",
+          "equals": 544
+        },
+        {
+          "path": "data.databases.0.last_visit_time",
+          "equals": "2022-02-28T14:20:29Z"
+        },
+        {
+          "path": "data.databases.0.first_visit_time",
+          "equals": "2022-01-13T13:59:15Z"
+        },
+        {
+          "path": "heuristic",
+          "contains": true
+        },
+        {
+          "path": "uids",
+          "matches": "^\\['[0-9]+'(, '[0-9]+')*\\]$",
+          "note": "UID-y widoczne w adresach m.facebook.com sa identyfikatorami kont, wiec publiczny plik przypina tylko ich ksztalt (cyfry); dokladna wartosc w cases/redmi3.local.json"
+        }
+      ]
+    },
+    {
+      "id": "accounts.pin_recovery",
+      "module": "pin_recovery",
+      "scopes": [
+        "accounts",
+        "all"
+      ],
+      "note": "PIN odzyskany z password.key i soli z locksettings.db (wartosc sekretu nie trafia do repo)",
+      "params": {},
+      "expect": [
+        {
+          "path": "data.state.password_type",
+          "equals": 196608
+        },
+        {
+          "path": "data.state.password_type_name",
+          "equals": "PIN"
+        },
+        {
+          "path": "data.salt_text",
+          "matches": "^[0-9a-f]{16}$",
+          "note": "sol jako hex (Long.toHexString) — sama wartosc soli jest sekretem"
+        },
+        {
+          "path": "data.state.lockout_attempt_deadline",
+          "equals": 0
+        },
+        {
+          "path": "data.password_key.length",
+          "equals": 72
+        },
+        {
+          "path": "data.password_key.format_ok",
+          "equals": true
+        },
+        {
+          "path": "data.search_seconds",
+          "lte": 5
+        },
+        {
+          "path": "data.candidates_count",
+          "equals": 1,
+          "note": "dokladnie jeden kandydat w przestrzeni 0000-9999; wartosc PIN-u jest sekretem"
+        }
+      ]
+    },
+    {
+      "id": "apps.messenger",
+      "module": "messenger",
+      "scopes": [
+        "apps",
+        "all"
+      ],
+      "note": "threads_db2 z tekstem rozmow, 5 kont, para kluczy E2EE, crypto_auth_token",
+      "params": {},
+      "expect": [
+        {
+          "path": "data.inventory.files",
+          "equals": 4238
+        },
+        {
+          "path": "data.inventory.databases",
+          "equals": 54
+        },
+        {
+          "path": "data.media.files",
+          "equals": 2282
+        },
+        {
+          "path": "data.media.by_dir.'/data/com.facebook.orca/cache/image'",
+          "equals": 747
+        },
+        {
+          "path": "data.threads.integrity",
+          "equals": "ok"
+        },
+        {
+          "path": "data.threads.counts.threads",
+          "equals": 262
+        },
+        {
+          "path": "data.threads.counts.messages",
+          "equals": 7461
+        },
+        {
+          "path": "data.threads.counts.thread_participants",
+          "equals": 565
+        },
+        {
+          "path": "data.threads.counts.thread_users",
+          "equals": 303
+        },
+        {
+          "path": "data.threads.with_text",
+          "equals": 6911
+        },
+        {
+          "path": "data.threads.with_attachments",
+          "equals": 152
+        },
+        {
+          "path": "data.threads.zero_timestamps",
+          "equals": 149
+        },
+        {
+          "path": "data.threads.last_message_utc",
+          "equals": "2022-02-28T17:44:08Z"
+        },
+        {
+          "path": "data.threads.plausible_range_utc.0",
+          "equals": "2015-02-09T12:03:13Z"
+        },
+        {
+          "path": "data.threads.implausible_timestamps",
+          "equals": 39
+        },
+        {
+          "path": "data.prefs.rows",
+          "equals": 908
+        },
+        {
+          "path": "data.prefs.accounts.0.uid",
+          "matches": "^[0-9]{10}$",
+          "note": "UID konta to identyfikator osobisty — tu tylko jego dlugosc i ksztalt cyfr"
+        },
+        {
+          "path": "data.prefs.accounts.0.name",
+          "matches": "^[A-Z][a-z]+ [A-Z][a-z]+$",
+          "note": "nazwa profilu jest dana osobowa — tu tylko wzorzec 'Imie Nazwisko'"
+        },
+        {
+          "path": "data.prefs.accounts.1.uid",
+          "matches": "^[0-9]{15}$",
+          "note": "jak wyzej, drugi UID ma 15 cyfr"
+        },
+        {
+          "path": "data.prefs.last_login_utc",
+          "equals": "2021-12-20T19:33:34Z"
+        },
+        {
+          "path": "data.msys.0.integrity",
+          "equals": "ok"
+        },
+        {
+          "path": "data.msys.0.counts.contacts",
+          "equals": 611
+        },
+        {
+          "path": "data.msys.0.identities.0.local_registration_id",
+          "equals": "956119654"
+        },
+        {
+          "path": "data.msys.0.identities.0.private_key_present",
+          "equals": true
+        },
+        {
+          "path": "data.msys.0.identities.0.identity_key_private_bytes",
+          "equals": 32
+        },
+        {
+          "path": "data.msys.0.auth_tokens.0.verifier_id",
+          "equals": "WA"
+        },
+        {
+          "path": "data.msys.0.auth_tokens.0.expires_utc",
+          "equals": "2022-02-28T20:20:16Z"
+        },
+        {
+          "path": "data.msys.1.encrypted",
+          "equals": true
+        },
+        {
+          "path": "data.tincan.non_empty",
+          "equals": {}
+        },
+        {
+          "path": "data.tincan.integrity",
+          "equals": "ok"
+        }
+      ]
+    },
+    {
+      "id": "apps.fb_tokens",
+      "module": "fb_tokens",
+      "scopes": [
+        "apps",
+        "all"
+      ],
+      "note": "5 tokenow EAA; 81 trafien w blobach to fragmenty base64, nie tokeny",
+      "params": {},
+      "expect": [
+        {
+          "path": "data.token_count",
+          "equals": 5
+        },
+        {
+          "path": "data.occurrences",
+          "equals": 8
+        },
+        {
+          "path": "data.raw_hits",
+          "equals": 89
+        },
+        {
+          "path": "data.noise_hits",
+          "equals": 81
+        },
+        {
+          "path": "data.by_uid",
+          "matches": "^\\{('[0-9]+': ('[^']*'|\"[^\"]*\"), )*'[0-9]+': ('[^']*'|\"[^\"]*\")\\}$",
+          "note": "by_uid kluczowane jest identyfikatorami kont (dane osobowe), wiec publiczny plik przypina tylko strukture slownika: klicze cyfrowe, wartosci napisy; dokladne pary w cases/redmi3.local.json"
+        },
+        {
+          "path": "data.tokens.0.token",
+          "matches": "^EAA"
+        },
+        {
+          "path": "data.sources.0.real_tokens",
+          "equals": 4
+        },
+        {
+          "path": "data.sources.1.kind",
+          "equals": "prefs_db-journal"
+        },
+        {
+          "path": "data.sources.2.kind",
+          "equals": "PropertiesStore_v02"
+        }
+      ]
+    },
+    {
+      "id": "apps.whatsapp",
+      "module": "whatsapp",
+      "scopes": [
+        "apps",
+        "all"
+      ],
+      "note": "brak mechanizmu hasla; 206 wiadomosci, 240 sesji Signal, brak kluczy keystore",
+      "params": {},
+      "expect": [
+        {
+          "path": "data.verdict",
+          "equals": "brak mechanizmu hasła (numer + SMS)"
+        },
+        {
+          "path": "data.identity.jabber_id",
+          "matches": "^[0-9]{8,15}@[a-z.]+$",
+          "note": "JID zawiera numer telefonu, wiec tu tylko ksztalt: cyfry E.164, znak @, domena"
+        },
+        {
+          "path": "data.identity.jabber_id_derived",
+          "equals": true
+        },
+        {
+          "path": "data.identity.country_code",
+          "equals": "48"
+        },
+        {
+          "path": "data.registration.0.values.input_phone_number",
+          "matches": "^[0-9]{3} [0-9]{3} [0-9]{3}$",
+          "note": "numer telefonu w formacie krajowym; publiczny plik przypina tylko spacje 3-3-3"
+        },
+        {
+          "path": "data.registration.0.values.country_code",
+          "equals": "48"
+        },
+        {
+          "path": "data.msgstore.integrity",
+          "equals": "ok"
+        },
+        {
+          "path": "data.msgstore.messages_total",
+          "equals": 206
+        },
+        {
+          "path": "data.msgstore.with_text",
+          "equals": 157
+        },
+        {
+          "path": "data.msgstore.counts.chat",
+          "equals": 196
+        },
+        {
+          "path": "data.msgstore.counts.jid",
+          "equals": 833
+        },
+        {
+          "path": "data.msgstore.counts.message_media",
+          "equals": 38
+        },
+        {
+          "path": "data.msgstore.last_message_utc",
+          "equals": "2022-01-30T10:06:47Z"
+        },
+        {
+          "path": "data.axolotl.integrity",
+          "equals": "ok"
+        },
+        {
+          "path": "data.axolotl.counts.sessions",
+          "equals": 240
+        },
+        {
+          "path": "data.axolotl.counts.identities",
+          "equals": 241
+        },
+        {
+          "path": "data.axolotl.counts.sender_keys",
+          "equals": 22
+        },
+        {
+          "path": "data.axolotl.counts.message_base_key",
+          "equals": 0
+        },
+        {
+          "path": "data.contacts.contacts",
+          "equals": 609
+        },
+        {
+          "path": "data.contacts.named_contacts",
+          "equals": 603
+        },
+        {
+          "path": "data.keystore.missing.0.uid",
+          "equals": 10092
+        },
+        {
+          "path": "data.keystore.missing.1.uid",
+          "equals": 10133
+        },
+        {
+          "path": "data.keystore.missing.2.uid",
+          "equals": 10149
+        },
+        {
+          "path": "data.key_material.0.file",
+          "equals": "/data/com.whatsapp/files/key"
+        },
+        {
+          "path": "#2.type_column",
+          "equals": "media_wa_type"
+        },
+        {
+          "path": "#2.type_codes.0",
+          "equals": 169
+        },
+        {
+          "path": "#2.type_codes.1",
+          "equals": 36
+        },
+        {
+          "path": "#2.type_codes.13",
+          "equals": 1
+        },
+        {
+          "path": "#2.type_kinds.text",
+          "equals": 169
+        },
+        {
+          "path": "#2.type_kinds.image",
+          "equals": 36
+        },
+        {
+          "path": "#2.type_kinds.gif",
+          "equals": 1
+        },
+        {
+          "path": "#2.forwarded",
+          "equals": 3
+        },
+        {
+          "path": "#2.starred",
+          "equals": 0
+        },
+        {
+          "path": "#2.type_mimes.1",
+          "equals": [
+            "image"
+          ]
+        },
+        {
+          "path": "#2.type_mimes.13",
+          "equals": [
+            "video"
+          ]
+        },
+        {
+          "path": "#3.type_disputed.13.observed_mime",
+          "equals": [
+            "video"
+          ]
+        },
+        {
+          "path": "#3.type_disputed.13.dictionary",
+          "equals": "GIF"
+        }
+      ]
+    },
+    {
+      "id": "apps.snapchat",
+      "module": "snapchat",
+      "scopes": [
+        "apps",
+        "all"
+      ],
+      "note": "odinstalowana; jedno uruchomienie 2017-06-03, zero tokenow",
+      "params": {},
+      "expect": [
+        {
+          "path": "data.app_dir.exists",
+          "equals": false
+        },
+        {
+          "path": "data.play.integrity",
+          "equals": "ok"
+        },
+        {
+          "path": "data.play.found.0.title",
+          "equals": "Snapchat"
+        },
+        {
+          "path": "data.play.found.0.first_download_ms",
+          "equals": 1495229856304
+        },
+        {
+          "path": "data.play.found.0.first_download_utc",
+          "equals": "2017-05-19T21:37:36Z"
+        },
+        {
+          "path": "data.play.found.0.last_notified_version",
+          "equals": 1183
+        },
+        {
+          "path": "data.play.found.0.last_update_utc",
+          "equals": "2017-08-22T19:24:38Z"
+        },
+        {
+          "path": "data.play.found.0.account",
+          "matches": "^[^\\s@]+@[^\\s@]+\\.[A-Za-z]{2,}$",
+          "note": "adres konta Google Play jest dana osobowa — tu tylko ogolny ksztalt adresu e-mail"
+        },
+        {
+          "path": "data.cloud_backup.found.versionCode",
+          "equals": "1183"
+        },
+        {
+          "path": "data.gallery.entries.0.component",
+          "equals": "com.snapchat.android.LandingPageActivity"
+        },
+        {
+          "path": "data.gallery.entries.0.recent_utc",
+          "equals": "2017-06-03T19:41:55Z"
+        },
+        {
+          "path": "data.gallery.entries.0.launches",
+          "equals": 1
+        },
+        {
+          "path": "data.media_dir.empty",
+          "equals": true
+        },
+        {
+          "path": "data.media_dir.created_utc",
+          "equals": "2017-05-19T21:46:49Z"
+        },
+        {
+          "path": "data.markers.hits",
+          "equals": []
+        }
+      ]
+    },
+    {
+      "id": "apps.install_timeline",
+      "module": "app_install_timeline",
+      "scopes": [
+        "apps",
+        "all"
+      ],
+      "note": "122 apki w localappstate.db, ostatnie pobranie 2022-02-13, 54 bez katalogu danych",
+      "params": {},
+      "expect": [
+        {
+          "path": "data.integrity",
+          "equals": "ok"
+        },
+        {
+          "path": "data.rows",
+          "equals": 122
+        },
+        {
+          "path": "data.accounts",
+          "matches": "^\\['[^\\s@]+@[^\\s@]+\\.[A-Za-z]{2,}'\\]$",
+          "note": "jedno konto Google Play uzyte do instalacji; wartosc ukryta w cases/redmi3.local.json"
+        },
+        {
+          "path": "data.by_year.'2016'",
+          "equals": 41
+        },
+        {
+          "path": "data.by_year.'2022'",
+          "equals": 5
+        },
+        {
+          "path": "data.data_dir_present",
+          "equals": 68
+        },
+        {
+          "path": "data.without_data_dir",
+          "equals": 54
+        },
+        {
+          "path": "data.without_data_dir_but_in_usage_list",
+          "equals": 0
+        },
+        {
+          "path": "data.usage_list_entries",
+          "equals": 168
+        },
+        {
+          "path": "data.apps.0.package_name",
+          "equals": "com.google.android.gms"
+        },
+        {
+          "path": "data.apps.0.first_download_utc",
+          "equals": "2016-06-22T00:25:16Z"
+        }
+      ]
+    },
+    {
+      "id": "apps.edl_acquire",
+      "module": "edl_acquire",
+      "scopes": [
+        "apps",
+        "all"
+      ],
+      "note": "plan odczytu EDL, dry run, oraz stan akwizycji z manifestem integralnosci; wymaga skonfigurowanego katalogu EDL (--edl-dir), bo checkout nie nosi cudzej sciezki — bez niego data.edl.exists jest nieobecne i test pada",
+      "params": {
+        "kind": "partition",
+        "partition": "userdata"
+      },
+      "expect": [
+        {
+          "path": "data.dry_run",
+          "equals": true
+        },
+        {
+          "path": "data.edl.exists",
+          "equals": true
+        },
+        {
+          "path": "data.edl.version",
+          "equals": "3.62"
+        },
+        {
+          "path": "data.edl.patch_applied",
+          "equals": true
+        },
+        {
+          "path": "data.rawprogram.count",
+          "equals": 33
+        },
+        {
+          "path": "data.job.kind",
+          "equals": "partition"
+        },
+        {
+          "path": "data.job.partition",
+          "equals": "userdata"
+        },
+        {
+          "path": "data.job.start_sector",
+          "equals": 7208960
+        },
+        {
+          "path": "data.job.sectors",
+          "equals": 53862367
+        },
+        {
+          "path": "data.job.planned_bytes",
+          "equals": 27577531904
+        },
+        {
+          "path": "data.job.read_only",
+          "equals": true
+        },
+        {
+          "path": "data.record.executed",
+          "equals": false
+        },
+        {
+          "path": "data.record.command.2",
+          "equals": "r"
+        },
+        {
+          "path": "data.record.command.3",
+          "equals": "userdata"
+        },
+        {
+          "path": "data.acquisition.status",
+          "equals": "planned"
+        },
+        {
+          "path": "data.acquisition.status_meaning",
+          "equals": "zapisano plan, nic nie wykonano"
+        },
+        {
+          "path": "data.acquisition.producer",
+          "matches": "^forensic/\\d+\\.\\d+\\.\\d+$"
+        },
+        {
+          "path": "data.acquisition.artefacts",
+          "equals": 0
+        },
+        {
+          "path": "data.acquisition.manifest_columns",
+          "equals": "name,source,sha256,bytes,recorded_utc"
+        },
+        {
+          "path": "data.record.status",
+          "equals": "planned"
+        },
+        {
+          "path": "data.record.source",
+          "equals": "edl"
+        }
+      ]
+    },
+    {
+      "id": "timeline.fs",
+      "module": "fs_timeline",
+      "scopes": [
+        "timeline",
+        "all"
+      ],
+      "note": "665 plikow z mtime 2026 (find z 2026-09-24 widzial 659), okno 23 h 31 min",
+      "params": {
+        "since": "2026-01-01"
+      },
+      "expect": [
+        {
+          "path": "data.count",
+          "equals": 665
+        },
+        {
+          "path": "data.first_utc",
+          "equals": "2026-03-18T07:54:13Z"
+        },
+        {
+          "path": "data.last_utc",
+          "equals": "2026-03-19T07:25:44Z"
+        },
+        {
+          "path": "data.span_human",
+          "equals": "23 h 31 min 31 s"
+        },
+        {
+          "path": "data.by_day.'2026-03-18'",
+          "equals": 594
+        },
+        {
+          "path": "data.by_day.'2026-03-19'",
+          "equals": 71
+        },
+        {
+          "path": "data.usage.packages",
+          "equals": 103
+        },
+        {
+          "path": "data.usage.first_utc",
+          "equals": "2026-03-18T07:54:30Z"
+        },
+        {
+          "path": "data.usage.last_utc",
+          "equals": "2026-03-19T07:25:40Z"
+        },
+        {
+          "path": "data.crashes.0.path",
+          "equals": "/tombstones/tombstone_02"
+        },
+        {
+          "path": "data.crashes.0.process",
+          "equals": "mdbd"
+        },
+        {
+          "path": "data.crashes.0.utc",
+          "equals": "2026-03-18T08:13:03Z"
+        },
+        {
+          "path": "data.crashes.1.utc",
+          "equals": "2026-03-18T08:17:25Z"
+        },
+        {
+          "path": "data.shutdown.files",
+          "equals": 18
+        },
+        {
+          "path": "data.shutdown.last_utc",
+          "equals": "2026-03-19T07:25:44Z"
+        },
+        {
+          "path": "data.shutdown.services_stopped.0",
+          "equals": "com.android.deskclock"
+        },
+        {
+          "path": "data.by_package.'com.google.android.gms'",
+          "equals": 379
+        },
+        {
+          "path": "data.bytes_written",
+          "equals": 124260112
+        }
+      ]
+    },
+    {
+      "id": "timeline.login",
+      "module": "login_timeline",
+      "scopes": [
+        "timeline",
+        "all"
+      ],
+      "note": "granty tokenow, logowania Messengera, rejestracja Gmaila, logi Sklepu Play",
+      "params": {},
+      "expect": [
+        {
+          "path": "data.count",
+          "equals": 131
+        },
+        {
+          "path": "data.by_kind.token",
+          "equals": 105
+        },
+        {
+          "path": "data.by_kind.logout",
+          "equals": 1
+        },
+        {
+          "path": "data.per_service.google.last_auth_utc",
+          "equals": "2022-03-01T11:07:34Z"
+        },
+        {
+          "path": "data.per_service.google.last_utc",
+          "equals": "2026-03-18T07:54:21Z"
+        },
+        {
+          "path": "data.per_service.messenger.last_auth_utc",
+          "equals": "2021-12-20T19:33:34Z"
+        },
+        {
+          "path": "data.per_service.messenger.last_utc",
+          "equals": "2022-02-28T17:09:32Z"
+        },
+        {
+          "path": "data.per_service.gmail.last_auth_utc",
+          "equals": "2022-02-28T11:45:59Z"
+        },
+        {
+          "path": "data.per_service.gmail.last_utc",
+          "equals": "2022-02-28T11:45:59Z"
+        },
+        {
+          "path": "data.per_service.gms.last_utc",
+          "equals": "2026-03-18T07:54:32Z"
+        },
+        {
+          "path": "data.per_service.whatsapp.last_utc",
+          "equals": "2022-01-31T08:15:49Z"
+        },
+        {
+          "path": "data.per_service.whatsapp.has_password_concept",
+          "equals": false
+        },
+        {
+          "path": "data.gmail_mail_grant.last_grant_utc",
+          "equals": "2022-02-28T12:44:58Z"
+        },
+        {
+          "path": "data.gmail_mail_grant.mail_scope_grants",
+          "equals": 8
+        },
+        {
+          "path": "data.grants.0.authenticator",
+          "equals": "com.google.android.apps.maps"
+        }
+      ]
+    },
+    {
+      "id": "timeline.unlock",
+      "module": "unlock_proof",
+      "scopes": [
+        "timeline",
+        "all"
+      ],
+      "note": "177 zapisow w katalogu FBE, PIN niezmieniony, locksettings przepisany 2026-03-19",
+      "params": {},
+      "expect": [
+        {
+          "path": "data.verdict",
+          "equals": "unlocked"
+        },
+        {
+          "path": "data.evidence.files",
+          "equals": 177
+        },
+        {
+          "path": "data.evidence.bytes",
+          "equals": 122204934
+        },
+        {
+          "path": "data.evidence.packages.'com.android.providers.contacts'",
+          "equals": 1
+        },
+        {
+          "path": "data.state.password_type",
+          "equals": 196608
+        },
+        {
+          "path": "data.state.password_type_name",
+          "equals": "PIN"
+        },
+        {
+          "path": "data.state.salt_text",
+          "matches": "^[0-9a-f]{16}$",
+          "note": "sol jako hex (Long.toHexString) — sama wartosc jest sekretem"
+        },
+        {
+          "path": "data.state.lockout_attempt_deadline",
+          "equals": 0
+        },
+        {
+          "path": "data.state.mtime_utc",
+          "equals": "2026-03-19T00:44:33Z"
+        },
+        {
+          "path": "data.state.trust_agents",
+          "contains": "GoogleTrustAgent"
+        },
+        {
+          "path": "data.unchanged.identical",
+          "equals": true
+        },
+        {
+          "path": "data.password_key.length",
+          "equals": 72
+        },
+        {
+          "path": "data.password_key.format_ok",
+          "equals": true
+        }
+      ]
+    },
+    {
+      "id": "timeline.net",
+      "module": "net_state",
+      "scopes": [
+        "timeline",
+        "all"
+      ],
+      "note": "brak uwierzytelnionej sesji sieciowej; liczniki ANET sa w /system/netstats i NIE sa sygnalem",
+      "params": {},
+      "expect": [
+        {
+          "path": "data.verdict",
+          "equals": "no_authenticated_session"
+        },
+        {
+          "path": "data.verdict_pl",
+          "equals": "brak uwierzytelnionej sesji"
+        },
+        {
+          "path": "data.counters.missing_everywhere",
+          "equals": false
+        },
+        {
+          "path": "data.counters.newest_utc",
+          "equals": "2026-03-18T07:55:30Z"
+        },
+        {
+          "path": "data.counters.ifaces.0",
+          "equals": "iFixThis"
+        },
+        {
+          "path": "data.counters.dirs.1.files",
+          "equals": 4
+        },
+        {
+          "path": "data.counters.dirs.0.present",
+          "equals": false
+        },
+        {
+          "path": "data.counters.files.0.magic",
+          "equals": "ANET"
+        },
+        {
+          "path": "data.counters.files.0.version",
+          "equals": 16
+        },
+        {
+          "path": "data.counters.files.1.size",
+          "equals": 885
+        },
+        {
+          "path": "data.counters_are_not_a_signal",
+          "equals": true
+        },
+        {
+          "path": "data.leases.count",
+          "equals": 2
+        },
+        {
+          "path": "data.leases.newest_utc",
+          "equals": "2022-03-06T14:26:22Z"
+        },
+        {
+          "path": "data.gsf.mtime_utc",
+          "equals": "2022-02-26T19:49:34Z"
+        },
+        {
+          "path": "data.gsf.device_key_utc",
+          "equals": "2022-02-26T19:49:43Z"
+        },
+        {
+          "path": "data.token_grants.newest_utc",
+          "equals": "2022-03-01T11:07:34Z"
+        },
+        {
+          "path": "data.token_grants.count",
+          "equals": 105
+        },
+        {
+          "path": "data.wpa_supplicant.networks",
+          "equals": 4
+        },
+        {
+          "path": "data.wpa_supplicant.epoch_mtime",
+          "equals": true
+        },
+        {
+          "path": "data.gcm.mtime_utc",
+          "equals": "2026-03-18T07:54:32Z"
+        },
+        {
+          "path": "data.gcm.size",
+          "equals": 41
+        },
+        {
+          "path": "data.play.account_logs",
+          "equals": 235
+        },
+        {
+          "path": "data.play.null_account_logs",
+          "equals": 4
+        },
+        {
+          "path": "data.signal_ages_days.dhcp_lease.days_before_floor",
+          "gte": 1300
+        }
+      ]
+    },
+    {
+      "id": "timeline.wifi",
+      "module": "wifi_creds",
+      "scopes": [
+        "timeline",
+        "all"
+      ],
+      "note": "5 SSID, 4 z kluczem WPA w jawnej postaci w obu zrodlach",
+      "params": {},
+      "expect": [
+        {
+          "path": "data.with_psk",
+          "equals": 4
+        },
+        {
+          "path": "data.database.count",
+          "equals": 12
+        },
+        {
+          "path": "data.database.integrity",
+          "equals": "ok"
+        },
+        {
+          "path": "data.database.accounts.0",
+          "matches": "^[0-9]{6,}$",
+          "note": "identyfikator konta Google w localappstate; publiczny plik przypina tylko ksztalt cyfr"
+        },
+        {
+          "path": "data.supplicant.networks",
+          "equals": 4
+        },
+        {
+          "path": "data.supplicant.device",
+          "equals": "ido"
+        },
+        {
+          "path": "data.supplicant.model",
+          "equals": "Redmi 3"
+        },
+        {
+          "path": "data.networks.0.ssid",
+          "matches": "^.{1,32}$",
+          "note": "nazwy sieci z urzadzenia identyfikuja gospodarstwo — hotspot z imieniem i router domowy z numerem; publiczny plik przypina tylko limit 32 oktetow, wartosci dokladne w cases/redmi3.local.json"
+        },
+        {
+          "path": "data.networks.0.has_both",
+          "equals": true
+        },
+        {
+          "path": "data.networks.0.length",
+          "equals": 9
+        },
+        {
+          "path": "data.networks.1.ssid",
+          "matches": "^.{1,32}$",
+          "note": "jak wyzej — nazwa routera z numerem egzemplarza"
+        },
+        {
+          "path": "data.networks.3.ssid",
+          "matches": "^.{1,32}$",
+          "note": "jak wyzej; dokladna wartosc sprawdzana jest w scope=full"
+        },
+        {
+          "path": "data.networks.3.length",
+          "equals": 10
+        },
+        {
+          "path": "data.networks.1.sources.0",
+          "equals": "wifi_settings.db"
+        }
+      ]
+    },
+    {
+      "id": "timeline.clock",
+      "module": "clock_anomaly",
+      "scopes": [
+        "timeline",
+        "all"
+      ],
+      "note": "35 plikow z datą epoki, 543 z data instalatora 1979, zegar potwierdzony 51/67",
+      "params": {},
+      "expect": [
+        {
+          "path": "data.counts.epoch_or_rom",
+          "equals": 35
+        },
+        {
+          "path": "data.counts.installer_constant",
+          "equals": 543
+        },
+        {
+          "path": "data.counts.coherent_2016_2022",
+          "equals": 129481
+        },
+        {
+          "path": "data.counts.after_2026",
+          "equals": 665
+        },
+        {
+          "path": "data.epoch.by_year.'1970'",
+          "equals": 35
+        },
+        {
+          "path": "data.installer_constant.count",
+          "equals": 543
+        },
+        {
+          "path": "data.installer_clock.compared",
+          "equals": 67
+        },
+        {
+          "path": "data.installer_clock.matched_install",
+          "equals": 9
+        },
+        {
+          "path": "data.installer_clock.matched_update",
+          "equals": 42
+        },
+        {
+          "path": "data.installer_clock.matched_either",
+          "equals": 51
+        },
+        {
+          "path": "data.installer_clock.max_delta_seconds",
+          "lte": 900
+        },
+        {
+          "path": "data.session_cluster.verdict",
+          "equals": "real_session"
+        },
+        {
+          "path": "data.session_cluster.count",
+          "equals": 665
+        },
+        {
+          "path": "data.session_cluster.crash_dumps",
+          "equals": 2
+        },
+        {
+          "path": "data.session_cluster.active_hours",
+          "equals": 23
+        }
+      ]
+    },
+    {
+      "id": "timeline.mactime",
+      "module": "mactime_export",
+      "scopes": [
+        "timeline",
+        "all"
+      ],
+      "note": "eksport body file w formacie mactime, walidowany narzedziem i porownany z fls -m",
+      "params": {
+        "validate": true,
+        "compare_tsk": true
+      },
+      "expect": [
+        {
+          "path": "data.entries",
+          "equals": 150566
+        },
+        {
+          "path": "data.refused",
+          "equals": 102
+        },
+        {
+          "path": "data.mactime.accepted",
+          "equals": true
+        },
+        {
+          "path": "data.mactime.available",
+          "equals": true
+        },
+        {
+          "path": "data.mactime.returncode",
+          "equals": 0
+        },
+        {
+          "path": "data.mactime.complaints",
+          "equals": []
+        },
+        {
+          "path": "data.mactime.index_days",
+          "equals": 1416
+        },
+        {
+          "path": "data.tsk.live",
+          "equals": 150668
+        },
+        {
+          "path": "data.tsk.unlinked",
+          "equals": 51924
+        },
+        {
+          "path": "data.tsk.virtual",
+          "equals": 1
+        },
+        {
+          "path": "data.tsk.malformed",
+          "equals": 0
+        },
+        {
+          "path": "data.coverage_gap",
+          "equals": 51924
+        }
+      ]
+    },
+    {
+      "id": "timeline.session_system",
+      "module": "session_system",
+      "scopes": [
+        "timeline",
+        "all"
+      ],
+      "note": "strona /system sesji 2026: 3 restarty jadra, 2 awarie mdbd, migawki procesow, log Mms",
+      "params": {},
+      "expect": [
+        {
+          "path": "data.verdict.procstats_snapshots",
+          "equals": 7
+        },
+        {
+          "path": "data.by_category.procstats",
+          "equals": 7
+        },
+        {
+          "path": "data.by_category.netstats",
+          "equals": 4
+        },
+        {
+          "path": "data.crashes.packages.0.package",
+          "equals": "/system/bin/fpcd"
+        },
+        {
+          "path": "data.crashes.packages.1.package",
+          "equals": "/sbin/mdbd"
+        },
+        {
+          "path": "data.session_crashes.0.package",
+          "equals": "/sbin/mdbd"
+        },
+        {
+          "path": "data.by_category.tombstone",
+          "equals": 2
+        },
+        {
+          "path": "data.by_category.debug_log",
+          "equals": 1
+        },
+        {
+          "path": "data.crashes.occurrences",
+          "equals": 10
+        },
+        {
+          "path": "data.crashes.history_range",
+          "equals": "2017-04-01 19:45:13 → 2026-03-18 21:17:16"
+        },
+        {
+          "path": "data.crashes.record_start_local",
+          "equals": "2026-03-18 09:17:16"
+        },
+        {
+          "path": "data.session_crashes.0.package",
+          "equals": "/sbin/mdbd"
+        },
+        {
+          "path": "data.session_crashes.0.crashes_since_boot",
+          "equals": 2
+        },
+        {
+          "path": "data.session_crashes.0.occurrences",
+          "equals": [
+            "2026-03-18 09:13:03",
+            "2026-03-18 09:17:25"
+          ]
+        },
+        {
+          "path": "data.session_crashes.0.occurrences_utc",
+          "equals": [
+            "2026-03-18T08:13:03Z",
+            "2026-03-18T08:17:25Z"
+          ]
+        },
+        {
+          "path": "data.procstats.snapshots.0.mtime_utc",
+          "equals": "2026-03-18T08:10:54Z"
+        },
+        {
+          "path": "data.procstats.snapshots.6.file",
+          "equals": "state-2026-03-18-21-17-27.bin"
+        },
+        {
+          "path": "data.procstats.deltas.0.from_local",
+          "equals": "2026-03-18 09:09:59"
+        },
+        {
+          "path": "data.procstats.deltas.0.to_local",
+          "equals": "2026-03-18 09:12:14"
+        },
+        {
+          "path": "data.procstats.deltas.0.added_count",
+          "gte": 100
+        },
+        {
+          "path": "data.kernel_reboots.count",
+          "equals": 3
+        },
+        {
+          "path": "data.kernel_reboots.records.0.local",
+          "equals": "2026-03-18 09:09:47"
+        },
+        {
+          "path": "data.kernel_reboots.records.0.utc",
+          "equals": "2026-03-18T08:09:47Z"
+        },
+        {
+          "path": "data.kernel_reboots.records.2.utc",
+          "equals": "2026-03-18T08:16:26Z"
+        },
+        {
+          "path": "data.procstats.snapshots.0.magic",
+          "equals": "STSP"
+        },
+        {
+          "path": "data.procstats.snapshots.0.local_time_in_name",
+          "equals": "2026-03-18 09:09:59"
+        },
+        {
+          "path": "data.debug_logs.count",
+          "equals": 1
+        },
+        {
+          "path": "data.debug_logs.logs.0.app",
+          "equals": "Mms"
+        },
+        {
+          "path": "data.debug_logs.logs.0.count",
+          "equals": 4
+        },
+        {
+          "path": "data.debug_logs.logs.0.timestamps.0.utc",
+          "equals": "2026-03-18T08:11:04Z"
+        },
+        {
+          "path": "data.batterystats.size",
+          "equals": 727148
+        },
+        {
+          "path": "data.batterystats.schema_present_in_project",
+          "equals": false
+        },
+        {
+          "path": "data.verdict.verdict",
+          "equals": "unstable_session"
+        },
+        {
+          "path": "data.verdict.kernel_reboots",
+          "equals": 3
+        },
+        {
+          "path": "data.verdict.crashes_in_session",
+          "equals": 2
+        },
+        {
+          "path": "data.verdict.apps_with_debug_log",
+          "equals": [
+            "Mms"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "report.decoder_audit",
+      "module": "decoder_audit",
+      "scopes": [
+        "report",
+        "all"
+      ],
+      "note": "nasz wlasny dekoder b-drzewa SQLite i klasyfikator formatow wobec sqlite3 i libmagic",
+      "params": {
+        "databases": [
+          "/data/com.android.providers.contacts/databases/contacts2.db",
+          "/system/users/0/accounts.db"
+        ],
+        "limit": 0,
+        "magic": true
+      },
+      "expect": [
+        {
+          "path": "data.databases_resolved",
+          "equals": 2
+        },
+        {
+          "path": "data.magic_available",
+          "equals": true
+        },
+        {
+          "path": "data.databases.0.tables",
+          "equals": 44
+        },
+        {
+          "path": "data.databases.0.tables_agreed",
+          "equals": 43
+        },
+        {
+          "path": "data.databases.0.tables_disagreed",
+          "equals": 0
+        },
+        {
+          "path": "data.databases.0.tables_skipped",
+          "equals": 1
+        },
+        {
+          "path": "data.databases.0.records_ours",
+          "equals": 26317
+        },
+        {
+          "path": "data.databases.0.records_sqlite3",
+          "equals": 26317
+        },
+        {
+          "path": "data.databases.0.order_problem_count",
+          "equals": 0
+        },
+        {
+          "path": "data.databases.0.values_agreed",
+          "equals": 560
+        },
+        {
+          "path": "data.databases.0.values_compared",
+          "equals": 600
+        },
+        {
+          "path": "data.databases.0.values_schema_evolved",
+          "equals": 40
+        },
+        {
+          "path": "data.databases.0.overflow_rows",
+          "equals": 16
+        },
+        {
+          "path": "data.databases.0.format",
+          "equals": "sqlite"
+        },
+        {
+          "path": "data.databases.0.format_magic",
+          "equals": "sqlite"
+        },
+        {
+          "path": "data.databases.1.tables",
+          "equals": 7
+        },
+        {
+          "path": "data.databases.1.tables_agreed",
+          "equals": 7
+        },
+        {
+          "path": "data.databases.1.tables_disagreed",
+          "equals": 0
+        },
+        {
+          "path": "data.databases.1.records_ours",
+          "equals": 433
+        },
+        {
+          "path": "data.databases.1.records_sqlite3",
+          "equals": 433
+        },
+        {
+          "path": "data.databases.1.values_agreed",
+          "equals": 49
+        },
+        {
+          "path": "data.databases.1.values_compared",
+          "equals": 49
+        },
+        {
+          "path": "data.databases.1.order_problem_count",
+          "equals": 0
+        }
+      ]
+    },
+    {
+      "id": "report.secret_audit",
+      "module": "secret_audit",
+      "scopes": [
+        "report",
+        "all"
+      ],
+      "note": "polityka sekretow: zadne sekrety w artefaktach pochodnych; rejestr niepusty",
+      "params": {},
+      "expect": [
+        {
+          "path": "data.verdict",
+          "equals": "no_plaintext_secrets"
+        },
+        {
+          "path": "data.hits",
+          "equals": []
+        },
+        {
+          "path": "data.hit_count",
+          "equals": 0
+        },
+        {
+          "path": "data.by_detector",
+          "equals": {}
+        },
+        {
+          "path": "data.derived_files",
+          "gte": 20
+        },
+        {
+          "path": "data.evidence_files_excluded",
+          "gte": 1
+        },
+        {
+          "path": "data.evidence_locations",
+          "contains": "extracted"
+        },
+        {
+          "path": "data.state_files",
+          "equals": 2
+        },
+        {
+          "path": "data.state_loose_modes",
+          "equals": []
+        },
+        {
+          "path": "data.reveal_exempt",
+          "equals": false
+        },
+        {
+          "path": "data.known_secrets",
+          "gte": 8
+        },
+        {
+          "path": "data.known_secrets_stored",
+          "gte": 0
+        },
+        {
+          "path": "data.classes.derived.must_be_clean",
+          "equals": true
+        },
+        {
+          "path": "data.classes.state.must_be_0600",
+          "equals": true
+        },
+        {
+          "path": "data.classes.evidence.excluded",
+          "equals": true
+        },
+        {
+          "path": "data.patterns",
+          "contains": "facebook_access_token"
+        },
+        {
+          "path": "data.patterns",
+          "contains": "password_key_hash"
+        },
+        {
+          "path": "data.json_fields_watched",
+          "contains": "psk"
+        },
+        {
+          "path": "data.kinds.token",
+          "gte": 1
+        },
+        {
+          "path": "data.kinds.password",
+          "gte": 1
+        }
+      ]
+    }
+  ]
+}

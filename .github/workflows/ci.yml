@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # e2fsprogs is not optional: tests/test_ext4_selftest.py calls the module,
+      # and the module builds its own ext2/3/4 images with mke2fs and compares
+      # our reading against dumpe2fs and debugfs.  Without them it reports itself
+      # unavailable and the assertions silently stop running, which is why this
+      # is a hard dependency of the job rather than a skip.
+      - name: Install e2fsprogs
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y e2fsprogs
+
+      - name: Install linters and pytest
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ruff mypy pytest
+
+      - name: ruff
+        run: ruff check .
+
+      # Non-blocking on purpose.  `forensic/core` is clean; the modules, the UI
+      # and the acquisition layer are not yet, and a red X on every push while
+      # the count falls from 64 to 0 gets ignored, which is worse than a number
+      # nobody reads.  The `|| true` comes off when the last error does.
+      - name: mypy (advisory)
+        run: mypy forensic || true
+
+      - name: mypy forensic/core (blocking)
+        run: mypy forensic/core
+
+      - name: pytest
+        run: python -m pytest tests/ -q

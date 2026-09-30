@@ -1,0 +1,89 @@
+[build-system]
+# setuptools>=77 for PEP 639: an SPDX licence expression in `license` and
+# `license-files`, which is how the canonical `LICENSE` reaches a built wheel.
+requires = ["setuptools>=77.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forensic"
+version = "0.12.0"
+description = "Offline forensics toolkit for Android partition images (ext4, SQLite, Chromium, AOSP)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "RafalB82" }]
+keywords = ["forensics", "android", "ext4", "sqlite", "edl", "dfir"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console :: Curses",
+    "Intended Audience :: Legal Industry",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Security",
+    "Topic :: System :: Filesystems",
+]
+dependencies = []
+
+[project.optional-dependencies]
+# The EDL toolchain is an EXTERNAL dependency, never imported by this package.
+# Acquisition shells out to the program below instead.
+edl = ["edlclient>=3.62"]
+
+[project.scripts]
+forensic = "forensic.cli:main"
+
+# Repozytorium jest prywatne i nie ma adresu publicznego; sekcja [project.urls]
+# zostaje pusta celowo — `file://` nie przechodzi walidacji setuptools.
+
+[tool.setuptools]
+packages = [
+    "forensic",
+    "forensic.core",
+    "forensic.modules",
+    "forensic.modules.offline",
+    "forensic.ui",
+    "forensic.verify",
+    "forensic.acquisition",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The ext4 self-test builds dozens of filesystem images with mke2fs; it is slow
+# by nature and there is nothing to gain from running its files in parallel.
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+# tests/ is type-annotated too, but it imports pytest and the package's own
+# modules; the same rules apply as for the package itself.
+extend-exclude = ["work", "build", "dist", "forensic.egg-info"]
+
+[tool.ruff.lint]
+# The default set (E4, E7, E9, F) plus the five rules this codebase was cleaned
+# up against, all of which catch something that fails quietly here:
+#   F401  an import left behind after a refactor
+#   F841  a local that is assigned and never read — in a parser that is usually
+#         a read whose result was dropped, which is how a discarded `head` and a
+#         duplicate `overflow_rows` survived
+#   UP035/UP037  typing imports and quoted annotations, dead weight on 3.10
+#   B014  a duplicate `except` arm, which makes the first one unreachable
+#   S324  sha1/md5 — the one place they are correct is password_key_hash, which
+#         says so with usedforsecurity=False
+select = ["E4", "E7", "E9", "F", "F841", "UP035", "UP037", "B014", "S324"]
+
+[tool.ruff.lint.per-file-ignores]
+# S101 asserts are the point of a test.
+"tests/*" = ["S101"]
+
+[tool.mypy]
+python_version = "3.10"
+# The toolkit imports nothing outside the standard library and the EDL
+# toolchain, which is never imported at all.  Anything mypy cannot see is
+# therefore a genuine dynamic import, not a missing stub package.
+ignore_missing_imports = true
+warn_unused_configs = true
+# The findings carry dicts of mixed value types on purpose: a module's payload is
+# a document, and annotating every leaf would be noise over a real signal.
+check_untyped_defs = false

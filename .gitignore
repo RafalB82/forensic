@@ -1,0 +1,23 @@
+work/
+cases/*.local.json
+PLAN.md
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+.DS_Store
+# Zrodla narzedzi pobranych z zrodel (apt-get source) nigdy nie trafiaja do
+# repo. Sam projekt jest GPL-3.0-or-later, wiec sama licencja nie jest tu
+# przeszkoda — przeszkoda jest inna: nie wolno wydawac za wlasne cos, czego
+# licencji nie da sie przenies na ten projekt. TSK jest GPL-3.0 i jest
+# wylacznie WOLANY jako osobny proces, nigdy nie linkowany i nigdy nie
+# kopiowany; wiedze o formatach dalo sie zdobyc czytajac definicje, nie jego
+# kod. Zasada z tury 15 pozostaje w mocy — tylko jej uzasadnienie bylo zbyt
+# szerokie, jak gdyby GPL byl w projektie zakazany.
+tsk-sources/
+sleuthkit*/
