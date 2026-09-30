@@ -5,11 +5,10 @@
 
 from __future__ import annotations
 
-import hashlib
 import time
 from pathlib import Path
 
-from ...core.evidence import TruncatedEvidenceError
+from ...core.evidence import DEFAULT_STREAM_LIMIT, TruncatedEvidenceError, copy_stream
 from ...core.export import human_bytes, to_json
 from ...core.naming import flat_name, safe_name, unique_names
 from ...core.findings import ModuleResult
@@ -51,6 +50,7 @@ def run(ctx: Ctx, params: dict) -> ModuleResult:
     if isinstance(raw_targets, str):
         raw_targets = [p.strip() for p in raw_targets.split(",") if p.strip()]
     sidecars = bool(params.get("sidecars", True))
+    stream_limit = int(params.get("max_bytes") or DEFAULT_STREAM_LIMIT)
     dest_root = Path(params.get("dest") or (ctx.work("extracted")))
     dest_root.mkdir(parents=True, exist_ok=True)
     fs = ctx.fs()
@@ -92,8 +92,14 @@ def run(ctx: Ctx, params: dict) -> ModuleResult:
                 {"source_path": target, "status": STATUS_ABSENT, "detail": "not a regular file", "inode": inode.number}
             )
             continue
+        out = dest_root / names[target]
         try:
-            blob = fs.read(inode)
+            written = copy_stream(
+                lambda offset, length: fs.read_at(inode, offset, length),
+                out,
+                size=inode.size,
+                limit=stream_limit,
+            )
         except TruncatedEvidenceError as exc:
             # The one case that must never be recorded as a successful
             # extraction.  Nothing is written and nothing is hashed: the old
@@ -109,20 +115,37 @@ def run(ctx: Ctx, params: dict) -> ModuleResult:
                 {"source_path": target, "status": STATUS_TRUNCATED, "detail": str(exc), "inode": inode.number}
             )
             continue
-        digest = hashlib.sha256(blob).hexdigest()
-        out = dest_root / names[target]
-        out.write_bytes(blob)
+        digest = written["sha256"]
         entry: dict = {
             "source_path": target,
             "status": STATUS_PRESENT,
             "output": str(out),
-            "size": len(blob),
-            "size_human": human_bytes(len(blob)),
+            "size": written["bytes"],
+            "size_human": human_bytes(written["bytes"]),
             "sha256": digest,
             "inode": inode.number,
+            "declared_size": written["declared_size"],
             "mtime_utc": fs.stat(target)["mtime"],
             "seconds": round(time.time() - started, 2),
         }
+        if not written["complete"]:
+            # ``i_size`` is a field in the image.  Believing a corrupted one means
+            # writing its value in zeros, and reporting a prefix as if it were the
+            # file is the same defect as padding a short read — so this is its own
+            # status, not a successful extraction of something smaller.
+            entry["status"] = STATUS_TRUNCATED
+            entry["detail"] = (
+                f"i_size deklaruje {written['declared_size']} B, wyciągnięto "
+                f"{written['bytes']} B (limit {stream_limit} B)"
+            )
+            manifest.append(entry)
+            res.add(
+                "warn",
+                f"Przycięty do limitu: {target}",
+                detail=f"{STATUS_TRUNCATED} — {entry['detail']}",
+                values=entry,
+            )
+            continue
         manifest.append(entry)
         companions: list[dict] = []
         if sidecars:
@@ -134,8 +157,15 @@ def run(ctx: Ctx, params: dict) -> ModuleResult:
                     continue
                 if not sibling_inode.is_reg:
                     continue
+                sibling_out = dest_root / names[sibling]
+                node_for_sidecar = sibling_inode
                 try:
-                    sibling_blob = fs.read(sibling_inode)
+                    side = copy_stream(
+                        lambda offset, length: fs.read_at(node_for_sidecar, offset, length),
+                        sibling_out,
+                        size=sibling_inode.size,
+                        limit=stream_limit,
+                    )
                 except TruncatedEvidenceError as exc:
                     res.add(
                         "warn",
@@ -147,14 +177,13 @@ def run(ctx: Ctx, params: dict) -> ModuleResult:
                         {"source_path": sibling, "status": STATUS_TRUNCATED, "detail": str(exc)}
                     )
                     continue
-                sibling_out = dest_root / names[sibling]
-                sibling_out.write_bytes(sibling_blob)
                 companion: dict = {
                     "source_path": sibling,
-                    "status": STATUS_PRESENT,
+                    "status": STATUS_PRESENT if side["complete"] else STATUS_TRUNCATED,
                     "output": str(sibling_out),
-                    "size": len(sibling_blob),
-                    "sha256": hashlib.sha256(sibling_blob).hexdigest(),
+                    "size": side["bytes"],
+                    "declared_size": side["declared_size"],
+                    "sha256": side["sha256"],
                 }
                 companions.append(companion)
                 manifest.append(companion)
@@ -205,6 +234,17 @@ register(
             ),
             Param(key="dest", label="param.dest", default="", kind="path"),
             Param(key="sidecars", label="param.sidecars", default=True, kind=BOOL),
+            Param(
+                key="max_bytes",
+                label="Limit bajtów na plik (0 = bez limitu)",
+                default=0,
+                kind="str",
+                help=(
+                    "i_size pochodzi z obrazu, więc uszkodzone pole potrafi kazać "
+                    "zapisać terabajty zer. Limit przerywa to i raportuje plik jako "
+                    "nie w pełni wyekskstrahowany."
+                ),
+            ),
         ],
         run=run,
     )

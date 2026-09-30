@@ -140,18 +140,32 @@ class Ctx:
         — replace every non-word character with an underscore — maps ``/a/b`` and
         ``/a_b`` to one file, and this method was that inline version.
 
-        A truncated image raises rather than returning a short buffer: the copy
-        on disk would otherwise be a full-length file of zeros whose whole
-        purpose is to be parsed by whatever asked for it.
+        Streamed, not read into memory and written out.  Every caller of this
+        wants a *file on disk* to hand to SQLite or another parser, so holding the
+        whole artifact in RAM on the way there was a copy of the whole file for no
+        reason — and a 10 GB database is a realistic thing to ask this tool about.
+        The hash comes out of the same pass, so it is of the bytes actually
+        written rather than of a buffer that was then written.
+
+        A truncated image raises rather than returning a short buffer, and the
+        write is atomic: a ``.part`` file that fails part-way is removed, so
+        nothing half-written sits at the path the next run would reuse.
         """
+        from .evidence import DEFAULT_STREAM_LIMIT, copy_stream
         from .naming import safe_name
 
         local = Path(target)
         if local.exists() and local.is_file():
             return local
-        blob = self.fs().read(target)
+        fs = self.fs()
+        node = fs.resolve(target)
         out = self.work("extracted") / safe_name(target)
-        out.write_bytes(blob)
+        copy_stream(
+            lambda offset, length: fs.read_at(node, offset, length),
+            out,
+            size=node.size,
+            limit=DEFAULT_STREAM_LIMIT,
+        )
         return out
 
     def new_result(self, module_id: str) -> ModuleResult:

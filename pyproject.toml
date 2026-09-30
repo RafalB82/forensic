@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "forensic"
-version = "0.14.0"
+version = "0.15.0"
 description = "Offline forensics toolkit for Android partition images (ext4, SQLite, Chromium, AOSP)"
 readme = "README.md"
 requires-python = ">=3.10"

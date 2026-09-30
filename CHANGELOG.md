@@ -3,6 +3,47 @@
 Wersje narzędzia. Każda tura planu (`PLAN.md`) to jedna wersja; numery
 commitów i wyniki weryfikacji są w `PLAN.md` w sekcji „CHECKPOINTY".
 
+## 0.15.0 — wyciąganie strumieniowe: RAM nie rośnie z rozmiarem dowodu
+
+**Zmierzone na pliku 192 MB w obrazie ext4, ten sam SHA-256 w obu ścieżkach:**
+
+| | przyrost szczytowego RSS |
+|---|---|
+| `blob = fs.read(path)` → `write_bytes` → `sha256(blob)` | **384,8 MB** |
+| `copy_stream(...)` | **24,9 MB** |
+
+Dokładnie 2× rozmiar pliku w starej ścieżce, bo `read_at` buduje `bytearray`
+całej długości, a potem `write_bytes` kopiuje drugi raz. W nowej przyrost
+odpowiada jednemu chunkowi i nie zależy od tego, czy artefakt waży 10 MB czy
+10 GB.
+
+Ścieżka wymieniona wyżej to była dokładnie ta, którą poprzednia tura
+certyfikowała w manifeście: najpierw cały plik w RAM, potem zapis, potem hash
+z bufora. Poza pamięcią trzymała też plik dłużej niż trzeba.
+
+**Zapis jest atomowy.** Bity lądują w `<nazwa>.part`, gotowy plik jest
+`rename`owany na miejsce. `extract_file` wpisuje ścieżkę wyjściową do manifestu
+**zanim** czyta bajty, więc plik częściowy pod nazwą końcową byłby wymieniony
+w manifeście jako udane wyciągnięcie i znaleziony przez następny przebieg — który
+przy istniejącym pliku wraca wcześnie i parsowałby fragment jako całą bazę.
+Awaria zostawia więc zero śladów, również po `KeyboardInterrupt`.
+
+**`i_size` to pole w obrazie i może kłamać o gigabajty.** Limit 4 GiB na plik,
+przekroczenie daje `complete: False` i status `TRUNCATED`, a nie prefiks udany
+jako plik — bo oddanie prefiksu po cichu to ten sam błąd co dopełnianie
+krótkiego odczytu, tylko w innym przebraniu.
+
+`Ctx.materialise` też jest strumieniowy. Każdy jego wywołujący chce pliku **na
+dysku** dla SQLite, więc trzymanie całego artefaktu w RAM po drodze było kopią
+całego pliku bez powodu.
+
+`tests/test_streaming.py` (10): bajt w bajt i zgodność hasha, pamięć ograniczona
+chunkiem i nie wielkością pliku, **kolejność offsetów ciągła** (luka w offsetach
+to dokładnie ten sam objaw co dziura rzadka, tylko od strony zapisu), brak
+pliku częściowego po błędzie i po przerwaniu, przetrwanie wcześniejszego
+wyekskstrahowanego pliku przy nieudanym nadpisaniu, `i_size` kłamiący vs limit,
+plik rzadki przez moduł, hasz manifestu zgodny z plikiem na dysku.
+
 ## 0.14.0 — nieudane odczytanie przestaje być cichą czystą negatywą
 
 Stan bazowy, na obrazie referencyjnym 27 GB i świeżym katalogu roboczym:

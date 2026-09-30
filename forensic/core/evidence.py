@@ -38,6 +38,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 #: Streaming chunk for hashing and for block reads.  8 MiB is the size at which
 #: a 27 GB image finishes in under three minutes on spinning storage while
@@ -113,6 +114,77 @@ INTEGRITY_UNVERIFIED = "UNVERIFIED"
 INTEGRITY_NOT_CHECKED = "NOT_CHECKED"
 INTEGRITY_PASS = "PASS"
 INTEGRITY_FAIL = "FAIL"
+
+#: Ceiling on a single streamed extraction, 4 GiB.  Not a policy about what may be
+#: extracted — a 10 GB file is legitimate evidence — but a stop on *corrupt*
+#: metadata: ``i_size`` is a field in the image, and a corrupted one that reads as
+#: four terabytes would otherwise have the tool write terabytes of zeros on the
+#: analyst's disk.  A file that trips this is reported as not fully extracted
+#: rather than quietly truncated to a prefix, which would be the sparse-read
+#: mistake wearing a different hat.
+DEFAULT_STREAM_LIMIT = 4 * 1024 * 1024 * 1024
+
+
+def copy_stream(
+    read_at: Callable[[int, int], bytes],
+    out_path: Path,
+    *,
+    size: int,
+    limit: int | None = None,
+    chunk: int = CHUNK_BYTES,
+) -> dict[str, Any]:
+    """Copy ``size`` bytes read through ``read_at`` to ``out_path``, hashing as it goes.
+
+    ``RAM ≈ 1 chunk`` whatever the artifact weighs, which is the whole point: the
+    old path was ``blob = fs.read(path)`` then ``write_bytes`` then
+    ``sha256(blob)``, so a 10 GB file was held in memory twice and hashed from
+    there — and a truncated image produced a correctly-sized buffer of zeros whose
+    hash went into a manifest.
+
+    Three things this does that a hand-rolled loop would not:
+
+    **The output is atomic.**  Bytes land in ``<name>.part`` and the finished file
+    is renamed into place.  A failure part-way leaves nothing at the path the
+    manifest names, so a half-written artifact can never be mistaken for an
+    extracted one — and ``extract_file`` lists outputs before it writes them.
+
+    **A short read is a failure, not a file.**  :class:`TruncatedEvidenceError`
+    from the underlying reader propagates and the ``.part`` file is removed.
+
+    **The declared size is bounded, and saying so.**  ``i_size`` comes from the
+    image.  If it exceeds ``limit`` the copy stops there and the result carries
+    ``complete: False`` — because handing back a prefix silently is precisely the
+    defect this function was written to end.
+    """
+    ceiling = size if limit is None else min(size, limit)
+    partial = out_path.with_name(out_path.name + ".part")
+    digest = hashlib.sha256()
+    written = 0
+    try:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(partial, "wb") as handle:
+            while written < ceiling:
+                block = read_at(written, min(chunk, ceiling - written))
+                if not block:
+                    break
+                handle.write(block)
+                digest.update(block)
+                written += len(block)
+        partial.replace(out_path)
+    except BaseException:
+        # Includes KeyboardInterrupt: a partial file left behind would be read by
+        # the next run as a complete extraction of something smaller.
+        partial.unlink(missing_ok=True)
+        raise
+    return {
+        "path": str(out_path),
+        "bytes": written,
+        "sha256": digest.hexdigest(),
+        "declared_size": size,
+        "complete": written >= size,
+        "chunk": chunk,
+    }
+
 
 
 @dataclass(frozen=True)
