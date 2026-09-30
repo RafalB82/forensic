@@ -3,6 +3,76 @@
 Wersje narzędzia. Każda tura planu (`PLAN.md`) to jedna wersja; numery
 commitów i wyniki weryfikacji są w `PLAN.md` w sekcji „CHECKPOINTY".
 
+## 0.16.0 — sumy kontrolne metadanych: superblock, bitmapy, inody
+
+**Obraz referencyjny nie ma `metadata_csum`.** Redmi 3 z 2016, ext4 bez tej
+cechy — i dlatego w docstringu czytnika stało *„parsed but never verified"*. Nie
+było czego weryfikować, a narzędzie nie umiało tego powiedzieć. Teraz mówi to
+wprost: `status: not_present`. **To nie jest „ok"** — brak sum to nie sukces
+kontroli, tylko jej brak, a raport mówiący *„metadane zweryfikowane"* na
+systemie plików bez sum byłby dokładnie tym zdaniem, którego to narzędzie nie
+wypowiada. Zmiana dotyczy obrazów z Android 9 i nowszych.
+
+**Trzeci stan, nie dwa.** `checksums()` zwraca `ok` / `failed` / **`not_present`**,
+i to ostatnie jest najważniejsze. Kształt jest ten sam w każdym kubełku, żeby
+konsument czytał `status` i `bad` bez sprawdzania, która gałąź je wyprodukowała.
+
+Nowe `forensic/core/crc32c.py` — crc32c w konwencji e2fsprogs (bez
+przed- i po dopełnienia, bo seed przechodzi wprost, a każdy wywołujący w scheme
+ext4 prowadzi jedną wartość biegłącą przez kilka buforów). Weryfikowane wektorem
+kontrolnym `crc32c(b"123456789") ^ 0xFFFFFFFF == 0xE3069283` oraz **przez
+porównanie z e2fsprogs**, nie z samym sobą.
+
+**Dwie własności, które były złe w pierwszej próbie i obie dają wiarygodną złą
+liczbę zamiast błędu:**
+
+1. **Suma superblocka nie bierze seeda.** `ext2fs_superblock_csum` to
+   `crc32c_le(~0, sb, offsetof(s_checksum))` — obejmuje 1020 bajtów **przed**
+   polem sumy i na nim się kończy, więc pola ani nie zeruje, ani nie dokleja.
+   Każda inna struktura w formacie jest zasiana, co czyni superblock wyjątkiem
+   zamiast regułą. Sto osiem wariantów przeszukanych bez trafienia, zanim
+   sprawdzony został kod źródłowy e2fsprogs zamiast mojej pamięci o nim.
+2. **`i_extra_isize` liczy bajty poza 128.** `i_checksum_hi` jest pod 0x82
+   bezwzględnie, ale test e2fsprogs to `i_extra_isize >= 4`, nie `>= 0x84`.
+   Przeczytanie progu bezwzględnie sprawia, że każdy inode wygląda na pozbawiony
+   górnej połowy, a każdy z górną połową jest wtedy zgłaszany jako uszkodzony.
+
+**Weryfikacja przed zapisaniem czegokolwiek**, na obrazach budowanych przez
+`mke2fs`:
+
+| struktura | wynik |
+|---|---|
+| superblock | 6/6 dla bloków 1K, 2K, 4K |
+| inody | 8/8 (6 realnych + 2 same-zero) |
+| bitmapa bloków | zgodna |
+| bitmapa inodów | zgodna |
+| deskryptory grup | **nie do sprawdzenia tutaj** |
+
+Pusty inode to trzeci przypadek obok zgodnego i niezgodnego: ma zerową sumę z
+konstrukcji, e2fsprogs to przyjmuje i tu też. Liczony osobno, żeby nie
+napompowywać licznika *zweryfikowanych* inodów.
+
+**Deskryptory grup wymagają bitu `gdt_csum`, który jest osobnym bitem** i którego
+ten e2fsprogs nie pozwala ustawić ani przez `mke2fs -O`, ani przez `tune2fs -O`.
+Gałąź napisana ze źródła i sprawdzona **tylko kształtem**; test mówi to
+wprost, zamiast udawać pokrycie. Czytelnik, który twierdziłby, że zweryfikował
+deskryptory, byłby dokładnie tą awarią, na którą ten zestaw poluje.
+
+**Wykrywanie uszkodzeń** — to jest właściwa wartość dodana, bo bitmapa jest
+tym, z czego liczy się wolne miejsce i z czego bierze się odpowiedź „czy ten blok
+wolny", czyli czy wyrzeźbiony plik można wierzyć. Testy przerzucają **jeden
+bajt** w superbloku, w bitmapie i w inode i sprawdzają, że każdy zostaje
+złapany. Jeden bajt, bo to najmniejsza możliwa zmiana i najczęstsza: zepsute
+bitmapa wygląda dokładnie jak wolne miejsce.
+
+`image_info` raportuje to jako finding, `reporting._csum_line` drukuje w
+Markdownie. Weryfikacja jest stdlib-only i nie potrzebuje roota ani e2fsprogs —
+`e2fsck -fn` też to robi, ale tam, gdzie go nie ma, ta odpowiedź teraz jest.
+
+`tests/test_metadata_csum.py` (14), w tym porównanie z `dumpe2fs`, wektor
+kontrolny, oraz osobno: obraz bez sum to `not_present`, a nie `ok`; i własność
+„suma superblocka kończy się przed swoim polem" przypięta testem.
+
 ## 0.15.0 — wyciąganie strumieniowe: RAM nie rośnie z rozmiarem dowodu
 
 **Zmierzone na pliku 192 MB w obrazie ext4, ten sam SHA-256 w obu ścieżkach:**

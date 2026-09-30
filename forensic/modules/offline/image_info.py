@@ -430,6 +430,42 @@ def run(ctx: Ctx, params: dict) -> ModuleResult:
             pass
     severity = "ok" if sb["state"] == 1 else "warn"
     res.add(severity, "Stan systemu plików", values=state)
+
+    # Metadata checksums, verified here rather than left to ``e2fsck -fn``: the
+    # metadata_csum implementation is stdlib-only and needs neither root nor
+    # e2fsprogs, so the answer is available on a machine that has neither.  The
+    # third state matters — a filesystem without the feature has no checksums to
+    # check, and reporting that as a pass would be claiming a check that never
+    # ran.
+    try:
+        checksums = ctx.fs().checksums(int(params.get("csum_inodes", 200) or 0))
+    except Ext4Error as exc:
+        checksums = {"status": "error", "detail": str(exc)}
+    if checksums.get("status") == "failed":
+        res.add(
+            "critical",
+            "Sumy kontrolne metadanych: NIEZGODNE",
+            detail=(
+                f"{len(checksums.get('bad', []))} struktur nie zgadza się z sumą: "
+                + "; ".join(item["what"] for item in checksums.get("bad", [])[:5])
+                + ". Metadane są uszkodzone albo nieaktualne."
+            ),
+            values=checksums,
+        )
+    elif checksums.get("status") == "ok":
+        res.add(
+            "ok",
+            f"Sumy kontrolne metadanych: zgodne ({checksums.get('ok_count', 0)})",
+            detail=checksums.get("detail", ""),
+            values=checksums,
+        )
+    else:
+        res.add(
+            "info",
+            "Sumy kontrolne metadanych: brak w tym filesystemie",
+            detail=checksums.get("detail", ""),
+            values=checksums,
+        )
     packages = ctx.packages()
     res.add(
         "info",
@@ -458,6 +494,7 @@ def run(ctx: Ctx, params: dict) -> ModuleResult:
         "partition": partition,
         "sha256": digest,
         "packages": len(packages),
+        "checksums": checksums,
     }
     res.data = payload
     path = to_json(ctx.work("exports") / "image_info.json", payload, ctx.masker)
@@ -472,7 +509,19 @@ register(
         category="image",
         title="mod.image_info.title",
         summary="mod.image_info.summary",
-        params=[Param(key="hash", label="param.hash", default=True, kind=BOOL)],
+        params=[
+            Param(key="hash", label="param.hash", default=True, kind=BOOL),
+            Param(
+                key="csum_inodes",
+                label="Ile inodów sprawdzić sumami (0 = tylko superblock i bitmapy)",
+                default=200,
+                kind="str",
+                help=(
+                    "obraz referencyjny ma 750 000 inodów, a sprawdzenie wszystkich "
+                    "trwa pół minuty; limit jest raportowany w wyniku"
+                ),
+            ),
+        ],
         run=run,
     )
 )

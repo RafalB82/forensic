@@ -12,7 +12,7 @@ indistinguishable from "there was nothing there".
 
 Supported: 64bit, EXTENTS, DIR_INDEX (htree-indexed directories have their index
 blocks skipped while scanning), sparse_super, huge_file, uninit_bg, extra_isize,
-dir_nlink.  ``metadata_csum`` is parsed but never verified.
+dir_nlink.  ``metadata_csum`` is parsed **and verified** — see :meth:`Ext4.checksums`.
 
 Refused, loudly, with :class:`Ext4Error`: classic indirect-block inodes (an
 inode that is neither extent-mapped nor legitimately empty), ``metadata_bg``
@@ -44,6 +44,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
+from .crc32c import EXT2_GOOD_OLD_INODE_SIZE, INODE_CSUM_HI_EXTRA_END, crc32c
 from .evidence import read_exact
 
 SB_OFFSET = 1024
@@ -609,7 +610,236 @@ class Ext4:
             "volume_name": raw[0x78:0x88].split(b"\0")[0].decode("utf-8", "replace"),
             "last_mounted": raw[0x88:0xC8].split(b"\0")[0].decode("utf-8", "replace"),
             "state_name": {1: "clean", 2: "errors", 4: "orphans"}.get(u16(0x3A), "?"),
+            # The checksum field and the seed, kept raw so :meth:`checksums` can
+            # verify without re-reading the superblock through the block cache —
+            # which would be a circular dependency, since the superblock is what
+            # locates everything else.
+            "checksum": u32(0x3FC),
+            "checksum_type": raw[0x175],
+            "checksum_seed": u32(0x270),
+            "uuid_raw": raw[0x68:0x78].hex(),
         }
+
+    # -- metadata_csum -------------------------------------------------------
+    #
+    # Verified against e2fsprogs rather than transcribed from the format
+    # documentation, because a checksum that is one byte off fails in both
+    # directions and neither is loud: it rejects clean images, or it accepts
+    # damaged ones and calls the metadata verified.  See
+    # :mod:`forensic.core.crc32c` for the two properties that were wrong in the
+    # first attempt and are worth not rediscovering.
+
+    def _csum_seed(self) -> int:
+        """The running crc every seeded structure starts from.
+
+        ``metadata_csum_seed`` puts the seed in the superblock at 0x270.  Without
+        it e2fsprogs derives one from the UUID — and *only* when ``metadata_csum``
+        or ``ea_inode`` is on, which is the same condition under which the seed is
+        used at all.
+        """
+        sb = self.superblock
+        if sb["feature_incompat"] & 0x2000:
+            return sb["checksum_seed"]
+        return crc32c(bytes.fromhex(sb["uuid_raw"]))
+
+    @property
+    def metadata_csum(self) -> bool:
+        """Whether the filesystem claims to protect its metadata with a checksum."""
+        return bool(self.superblock["feature_ro_compat"] & 0x0400)
+
+    @property
+    def gdt_csum(self) -> bool:
+        """Whether group descriptors carry a checksum of their own."""
+        return bool(self.superblock["feature_ro_compat"] & 0x0100)
+
+    def _bitmap_csum(self, group: int, field: str) -> int:
+        """Computed crc32c of one group's block or inode bitmap.
+
+        The bitmap is read at its own size, not at one block: a group whose
+        bitmaps span several blocks has a checksum over all of them, and reading
+        one block would produce a number that disagrees with e2fsprogs on every
+        large group and agree on every small one — a bug that looks like it works.
+        """
+        per_group = (
+            self.superblock["inodes_per_group"]
+            if field == "inode_bitmap"
+            else self.superblock["blocks_per_group"]
+        )
+        need = -(-per_group // 8)
+        return crc32c(self._group_bitmap(group, field)[:need], self._csum_seed())
+
+    def group_descriptor_csum(self, group: int) -> int:
+        """Computed crc32c of one group descriptor, low 16 bits.
+
+        ``bg_checksum`` is zeroed while computing — it sits *inside* the covered
+        region, unlike the superblock's checksum which sits outside it.
+        """
+        gd = bytearray(self._group_descriptor(group))
+        gd[0x1E:0x20] = b"\0\0"
+        return crc32c(bytes(gd), crc32c(struct.pack("<I", group), self._csum_seed())) & 0xFFFF
+
+    def inode_csum(self, number: int, raw: bytes) -> tuple[int, bool]:
+        """Computed crc32c of one inode, and whether its high half exists.
+
+        ``i_generation`` is in the sum because it is what stops a swapped-in inode
+        from inheriting the checksum of the one it replaced.
+        """
+        size = self.inode_size
+        buf = bytearray(raw[:size])
+        buf[0x7C:0x7E] = b"\0\0"
+        extra = struct.unpack_from("<H", buf, 0x80)[0] if size > EXT2_GOOD_OLD_INODE_SIZE else 0
+        has_hi = size > EXT2_GOOD_OLD_INODE_SIZE and extra >= INODE_CSUM_HI_EXTRA_END
+        if has_hi:
+            buf[0x82:0x84] = b"\0\0"
+        gen = struct.unpack_from("<I", buf, 0x64)[0]
+        crc = crc32c(struct.pack("<I", number), self._csum_seed())
+        crc = crc32c(struct.pack("<I", gen), crc)
+        crc = crc32c(bytes(buf), crc)
+        return (crc if has_hi else crc & 0xFFFF), has_hi
+
+    def checksums(self, inodes: int = 0) -> dict[str, Any]:
+        """Verify what the filesystem claims to protect, and say what was covered.
+
+        Three buckets on purpose, and the third is the one that matters most:
+        ``ok``, ``failed`` and **``not_present``**.  A filesystem with
+        ``metadata_csum`` off has nothing to verify, and reporting that as a pass
+        would be claiming a check that never ran.  The same holds for group
+        descriptors, which need ``gdt_csum`` *separately* from
+        ``metadata_csum`` — the two bits are independent and an image can have
+        one without the other.
+
+        ``inodes`` caps how many inodes are checked, because the reference image
+        has 750 000 of them and verifying all of them takes half a minute; the
+        cap is reported rather than implied.
+        """
+        sb = self.superblock
+        out: dict[str, Any] = {
+            "metadata_csum": self.metadata_csum,
+            "gdt_csum": self.gdt_csum,
+            "checksum_type": sb["checksum_type"],
+            "seed": f"0x{self._csum_seed():08x}",
+        }
+        if not self.metadata_csum and not self.gdt_csum:
+            # A 2016 Redmi 3 lands here, and so would any volume mke2fs made
+            # before ``metadata_csum``.  The shape is the same as the one below
+            # so a caller can read ``status`` and ``bad`` without first checking
+            # which branch produced the result — and the answer is deliberately
+            # not "ok": no checksum was computed, and reporting a pass for a
+            # check that did not run is the thing this whole method exists to
+            # avoid.
+            out.update({
+                "status": "not_present",
+                "ok_count": 0,
+                "bad": [],
+                "detail": (
+                    "filesystem nie deklaruje sum kontrolnych metadanych "
+                    "(metadata_csum) — nie ma czego weryfikować"
+                ),
+            })
+            return out
+
+        bad: list[dict] = []
+        ok = 0
+
+        # -- superblock.  No seed, and it stops before s_checksum.
+        raw_sb = self._pread(SB_OFFSET, 1024)
+        if len(raw_sb) >= 0x400:
+            stored = struct.unpack_from("<I", raw_sb, 0x3FC)[0]
+            computed = crc32c(raw_sb[:0x3FC])
+            ok += 1 if computed == stored else 0
+            if computed != stored:
+                bad.append({"what": "superblock", "stored": stored, "computed": computed})
+            out["superblock"] = {"stored": stored, "computed": computed, "ok": computed == stored}
+
+        # -- group descriptors
+        groups = len(self._groups)
+        if self.gdt_csum:
+            gd_bad = 0
+            for group in range(groups):
+                stored = struct.unpack_from("<H", self._group_descriptor(group), 0x1E)[0]
+                computed = self.group_descriptor_csum(group)
+                if stored != computed:
+                    gd_bad += 1
+                    if len(bad) < 20:
+                        bad.append({"what": f"group {group}", "stored": stored, "computed": computed})
+            ok += groups - gd_bad
+            out["group_descriptors"] = {"checked": groups, "bad": gd_bad}
+
+        # -- bitmaps
+        bitmap_bad = 0
+        for group in range(groups):
+            for which, lo_at in (("block_bitmap", 0x18), ("inode_bitmap", 0x1A)):
+                stored = struct.unpack_from(
+                    "<H", self._group_descriptor(group), lo_at
+                )[0]
+                computed = self._bitmap_csum(group, which)
+                if stored != (computed & 0xFFFF):
+                    bitmap_bad += 1
+                    if len(bad) < 20:
+                        bad.append({"what": f"group {group} {which}", "stored": stored, "computed": computed})
+        ok += groups * 2 - bitmap_bad
+        out["bitmaps"] = {"checked": groups * 2, "bad": bitmap_bad}
+        if not self.gdt_csum:
+            out["group_descriptors"] = {"checked": 0, "bad": 0, "not_present": True}
+
+        # -- inodes
+        if inodes:
+            inode_bad = 0
+            checked = 0
+            zero = 0
+            limit = min(sb["inodes_count"], inodes)
+            per_block = self.block_size // self.inode_size
+            for number in range(1, limit + 1):
+                group, index = divmod(number - 1, sb["inodes_per_group"])
+                if group >= len(self._groups):
+                    continue
+                table = self._groups[group]["inode_table"]
+                raw = self._cache.read(table + index // per_block, (index % per_block) * self.inode_size, self.inode_size)
+                if not any(raw[:EXT2_GOOD_OLD_INODE_SIZE]):
+                    # e2fsprogs accepts an all-zero inode whose checksum does not
+                    # match, and so does this: an unused inode nobody wrote is not
+                    # corruption.  Counted separately so the number of verified
+                    # inodes is not inflated by them.
+                    zero += 1
+                    continue
+                checked += 1
+                computed, has_hi = self.inode_csum(number, raw)
+                lo = struct.unpack_from("<H", raw, 0x7C)[0]
+                stored = lo | (struct.unpack_from("<H", raw, 0x82)[0] << 16) if has_hi else lo
+                if stored != computed:
+                    inode_bad += 1
+                    if len(bad) < 20:
+                        bad.append({"what": f"inode {number}", "stored": stored, "computed": computed})
+            ok += checked - inode_bad
+            out["inodes"] = {
+                "checked": checked,
+                "bad": inode_bad,
+                "all_zero": zero,
+                "cap": inodes,
+                "capped": limit < sb["inodes_count"],
+            }
+
+        out["ok_count"] = ok
+        out["bad"] = bad
+        out["status"] = "failed" if bad else "ok"
+        out["detail"] = (
+            f"{ok} struktur zgodnych" + (f", {len(bad)} niezgodnych" if bad else "")
+        )
+        return out
+
+    def _group_descriptor(self, group: int) -> bytes:
+        """Raw bytes of one group descriptor.
+
+        Addressed by byte offset and then split into block and offset, because
+        :meth:`_BlockCache.read` takes a **block number** — handing it a byte
+        offset reads a plausible-looking descriptor from the wrong place and
+        returns zeros for its checksum fields, which is indistinguishable from a
+        filesystem that stores no checksums.
+        """
+        size = self.superblock["desc_size"]
+        at = (self.superblock["first_data_block"] + 1) * self.block_size + group * size
+        block, in_block = divmod(at, self.block_size)
+        return self._cache.read(block, in_block, size)
 
     def _check_group_layout(self, sb: dict, gdt_block: int, desc_size: int, groups: int) -> None:
         """Refuse group-descriptor layouts this reader does not implement.

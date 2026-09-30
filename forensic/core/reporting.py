@@ -68,6 +68,28 @@ def _case_sha256(ctx: Ctx) -> str:
     return ""
 
 
+def _csum_line(checksums: Any) -> str:
+    """One line saying what the metadata checksums did — and whether they ran.
+
+    Three words, and the third one is the one that is easy to get wrong:
+    ``not_present`` is not ``ok``.  A filesystem without ``metadata_csum`` has no
+    checksums, so there was nothing to verify, and printing "verified" for it
+    claims a check that never happened.
+    """
+    if not checksums:
+        return "nie sprawdzono (moduł nie był uruchomiony)"
+    status = checksums.get("status", "?")
+    if status == "ok":
+        return f"zweryfikowane ({checksums.get('ok_count', 0)} struktur)"
+    if status == "failed":
+        bad = checksums.get("bad", [])
+        names = ", ".join(str(item.get("what", "?")) for item in bad[:4])
+        return f"**NIEZGODNE** — {len(bad)} struktur: {names}"
+    if status == "not_present":
+        return "brak w filesystemie (metadata_csum nieustawione)"
+    return f"{status}: {checksums.get('detail', '')}"
+
+
 def _num(value: Any, default: int = 0) -> int:
     """Format a count safely: exports may legitimately hold ``None``."""
     try:
@@ -242,6 +264,7 @@ class Builder:
             "sha256_source": (
                 "obliczony" if computed else "z case" if from_case else "brak"
             ),
+            "checksums": data.get("checksums") or {},
             "source": source.get("file", ""),
         }
         dirty = self.source("fs_check", "e2fsck.log")
@@ -689,6 +712,7 @@ def to_markdown(doc: dict, masker: Masker | None = None) -> str:
             f"| stan fs | {image.get('state') or '?'} · recover: {image.get('recover_needed')} · "
             f"errors: {image.get('errors', '?')} · ostatni mount: {image.get('last_mounted') or '?'} |",
             f"| cechy | {', '.join(image.get('features', [])) or '—'} |",
+            f"| sumy metadanych | {_csum_line(image.get('checksums'))} |",
             f"| SHA-256 | `{image.get('sha256') or 'nieobliczony'}` "
             f"({image.get('sha256_source') or 'brak'}) |",
             "",
