@@ -1767,7 +1767,29 @@ class Ext4:
         return out
 
     def read_at(self, path_or_inode: str | int | Inode, offset: int, length: int) -> bytes:
-        """Read a byte range out of a file without loading the whole file."""
+        """Read a byte range out of a file without loading the whole file.
+
+        Two kinds of gap look alike here and must not be treated alike, because
+        only one of them is corruption.
+
+        A **physical** block that is not in the image raises
+        :class:`~forensic.core.evidence.TruncatedEvidenceError` in
+        :class:`_BlockCache`.  Those bytes were in the evidence and are gone.
+
+        A **logical** gap — a block inside ``i_size`` that no extent maps — is a
+        sparse hole, and reading it as zeros is what the format means.  The
+        buffer is therefore pre-sized to the requested length and the extents are
+        written into it *positionally*, rather than concatenated.
+
+        Concatenating is the obvious implementation and it is wrong in a way that
+        looks like success: an 16 KiB SQLite database whose middle pages were
+        never written has eight unmapped blocks, so the concatenation returned
+        8 KiB of real bytes and no error at all.  ``read_at`` clipped to
+        ``i_size``, the caller stored the short result as the file, and SQLite
+        answered *database disk image is malformed* — a confident false
+        diagnosis of a perfectly good database, on evidence that had not been
+        damaged.  ``debugfs dump`` on the same image produces the correct 16 KiB.
+        """
         node = (
             self.resolve(path_or_inode)
             if isinstance(path_or_inode, str)
@@ -1778,7 +1800,7 @@ class Ext4:
         if offset >= node.size:
             return b""
         length = min(length, node.size - offset)
-        out = bytearray()
+        out = bytearray(length)
         for extent in node.extents:
             first = extent.logical * self.block_size
             last = first + extent.count * self.block_size
@@ -1792,9 +1814,39 @@ class Ext4:
                 block = extent.physical + delta // self.block_size
                 in_block = delta % self.block_size
                 take = min(self.block_size - in_block, end - pos)
-                out += self._cache.read(block, in_block, take)
+                at = pos - offset
+                out[at : at + take] = self._cache.read(block, in_block, take)
                 pos += take
         return bytes(out)
+
+    def hole_bytes(self, path_or_inode: str | int | Inode) -> int:
+        """Bytes inside ``i_size`` that no extent maps: a sparse hole.
+
+        Reported rather than acted on, because it is evidence rather than a
+        fault.  A hole means the file was extended without being written — a
+        database truncated by a crashed process, a log that was resized, a file
+        whose tail was zeroed in place.  ``debugfs`` and ``blkls`` both fill it
+        with zeros and so does :meth:`read_at`, and an analyst deciding whether
+        the trailing zeros of a file were ever written wants the number.
+
+        Computed on demand rather than remembered from the last read: a
+        "bytes missing from the previous call" counter is wrong the moment two
+        modules read different files, which is what this tool does constantly.
+        """
+        node = (
+            self.resolve(path_or_inode)
+            if isinstance(path_or_inode, str)
+            else path_or_inode
+            if isinstance(path_or_inode, Inode)
+            else self.inode(path_or_inode)
+        )
+        covered = 0
+        for extent in node.extents:
+            first = max(extent.logical * self.block_size, 0)
+            last = min(first + extent.count * self.block_size, node.size)
+            if last > first:
+                covered += last - first
+        return max(0, node.size - covered)
 
     def read(self, path_or_inode: str | int | Inode, max_bytes: int | None = None) -> bytes:
         """Read a whole file.  ``max_bytes`` guards against absurd sizes."""

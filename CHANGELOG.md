@@ -89,6 +89,42 @@ na 48 bitach marginesu: sprawdza i dokleja porządkowy sufiks. Ta sama wada był
 w `Ctx.materialise`, z własną wersją podstawienia — teraz oba miejsca dzielą
 `forensic/core/naming.py`.
 
+**Druga dziura w tym samym miejscu: plik rzadki (`sparse`) był ucinany po cichu.**
+`read_at()` przycinał wynik do `i_size`, a potem **konkatenował** tylko te
+extenty, które istnieją. Bufor wychodził krótszy niż deklarowany rozmiar pliku i
+**bez żadnego wyjątku**.
+
+Nie jest to teoria. Baza SQLite z `page_size=4096` i małą ilością danych ma
+niezapisane strony w środku — plik na dysku jest rzadki. W obrazie wewnętrzne
+trzeba jest rzadkie:
+
+| | przed | po |
+|---|---|---|
+| `i_size` w inode | 16384 | 16384 |
+| bloki pokryte extentami | 8 z 16 | 8 z 16 |
+| `read()` | **8192 B, bez błędu** | 16384 B |
+| zgodność SHA-256 z plikiem | **nie** | tak |
+| `sqlite3` na wyniku | `database disk image is malformed` | czyta poprawnie |
+
+To samo zgłoszenie dotyczyłoby zepsutej bazy. Do tego `Ctx.materialise()`
+zapisywał ten skrócony bufor na dysk jako „plik”, więc krótsza treść stawała
+się trwała. `debugfs dump` na tym samym obrazie daje poprawne 16384 B — czyli
+e2fsprogs, referencja, z którą czytnik jest porównywany, robi to inaczej.
+
+**Dwa rodzaje braków wyglądają w kodzie tak samo i wymagają przeciwnego
+postępowania.** Brak *fizyczny* — blok nie ma go w pliku — to brak dowodu i
+`TruncatedEvidenceError`. Brak *logiczny* — blok wewnątrz `i_size`, którego żaden
+extent nie mapuje — to **dziura rzadka**, i format mówi, że czyta się jako zera.
+Wypełnianie jej jest tu poprawne; zgłaszanie jako nieczytelną odrzucałoby połowę
+plików rzadkich na prawdziwym `/data`. Buffer jest więc rozmiaru żądanego, a
+extenty zapisuje się do niego **pozycyjnie**. `tests/test_sparse_holes.py` (6)
+pilnuje obu kierunków naraz, w tym że dziura nie jest uznana za ucięcie i że
+`hole_bytes()` nie jest stałą — plik bez dziur zgłasza zero.
+
+`hole_bytes()` liczy je na żądanie, a nie zapamiętuje z ostatniego odczytu:
+licznik „brakowało w poprzednim wywołaniu” myli się, gdy dwa moduły czytają
+różne pliki, a ten tool robi to non stop.
+
 **Nazwy artefaktów się zmieniły** (`data_system_lock_settings.db--682f455a1c70`).
 Stabilne między przebiegami — powtórzenie case'u nie zmienia nazw, do których
 odwołuje się wcześniejszy raport — ale inne niż poprzednio, więc wyeksportowane
@@ -101,6 +137,8 @@ akwizycja, `newcase` i `verify` potrzebują go wszystkie i żaden nie powinien s
 do innego modułu po niego.
 Testy: `tests/test_truncated_evidence.py` (13) — ucięty o 1 B, o blok, o
 metadane, o extent; oraz brak zera udającego plik i brak fałszywej czystej negatywy.
+`tests/test_sparse_holes.py` (6) — plik rzadki, pozycjonność odczytu, dziura
+nie jest ucięciem. Łącznie 96 testów, było 73.
 
 ## 0.12.0 — menu: dwa ekrany, prawdziwa dwujęzyczność, ASCII zamiast `ł=?`
 
