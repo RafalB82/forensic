@@ -24,6 +24,7 @@ import xml.etree.ElementTree as ET
 from typing import Any
 from collections.abc import Iterable
 
+from .readlog import ReadLog
 from .xmlsafe import safe_fromstring
 
 FB_TOKEN_RE = re.compile(rb"EAA[A-Za-z0-9_\-]{40,}")
@@ -382,18 +383,29 @@ def _json_end(text: str, start: int, limit: int = 1_000_000) -> int | None:
     return None
 
 
-def preferences_rows(path: str) -> list[tuple]:
-    """Every ``(key, type, value)`` row of Messenger's ``preferences`` table."""
+def preferences_rows(path: str, log: ReadLog | None = None) -> list[tuple]:
+    """Every ``(key, type, value)`` row of Messenger's ``preferences`` table.
+
+    Returns an empty list when the table cannot be read, because that is what a
+    caller iterating rows expects — so a caller that reports a **count** has to
+    say what an empty list means, and that is what ``log`` is for.  Without it
+    this function cannot tell its caller anything, and both of its callers did
+    read the empty list as "there is nothing here": ``fb_tokens`` reported zero
+    access tokens and ``login_timeline`` reported an empty Messenger timeline,
+    one of them from a database neither had opened successfully.
+    """
     conn = _open(path)
     try:
         return [(str(k), t, v) for k, t, v in conn.execute("select key, type, value from preferences")]
-    except sqlite3.Error:
+    except sqlite3.Error as exc:
+        if log is not None:
+            log.unreadable(path, exc, where="preferences")
         return []
     finally:
         conn.close()
 
 
-def preferences_documents(path: str) -> list[Any]:
+def preferences_documents(path: str, log: ReadLog | None = None) -> list[Any]:
     """JSON documents stored in ``preferences``, decoded.
 
     Messenger keeps interstitial trees and push payloads in the same table as
@@ -401,7 +413,7 @@ def preferences_documents(path: str) -> list[Any]:
     a base64 coincidence.
     """
     out: list[Any] = []
-    for _key, _kind, value in preferences_rows(path):
+    for _key, _kind, value in preferences_rows(path, log):
         if not isinstance(value, str) or '"' not in value:
             continue
         try:
@@ -1155,7 +1167,11 @@ def _whatsapp_type_profile(conn: sqlite3.Connection) -> dict[str, Any]:
                 conn.execute("select count(*) from messages where starred = 1").fetchone()[0]
             )
         except sqlite3.Error:
-            pass
+            # ``None`` and not an absent key.  The caller used to read this with
+            # ``msgstore.get("starred", 0)``, so leaving the key out turned a
+            # failed query into "0 oznaczonych gwiazdką" — a finding that the
+            # device starred nothing, printed on evidence we never read.
+            profile["starred"] = None
     if "forwarded" in columns:
         try:
             profile["forwarded"] = int(
@@ -1165,7 +1181,7 @@ def _whatsapp_type_profile(conn: sqlite3.Connection) -> dict[str, Any]:
                 ).fetchone()[0]
             )
         except sqlite3.Error:
-            pass
+            profile["forwarded"] = None
     return profile
 
 

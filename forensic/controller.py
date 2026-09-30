@@ -10,15 +10,36 @@ and tests.
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Callable
 
 from .core import config as config_mod
 from .core import i18n
+from .core.evidence import TruncatedEvidenceError
 from .core.export import color
 from .core.findings import ModuleResult
+from .core.readlog import TRUNCATED, UNREADABLE
 from .core.session import Ctx
 from .modules import registry
 from .ui import render
+
+
+def _classify(exc: BaseException) -> tuple[str, str]:
+    """Name what an escaping exception means for the evidence.
+
+    These three are not variations of "the module failed".  One says a database
+    was there and could not be read, one says a file ends before its own
+    geometry says it should, and one says neither — the code is wrong and no
+    conclusion about the evidence may be drawn.  They used to reach the same
+    ``except Exception``, print the same line, and return ``None``, which dropped
+    the module entirely: no finding, no export, nothing in ``verify.json``, and a
+    reader of the report left with an absence that reads like a clean negative.
+    """
+    if isinstance(exc, TruncatedEvidenceError):
+        return TRUNCATED, "obraz ucięty — plik kończy się wcześniej, niż deklaruje geometria"
+    if isinstance(exc, sqlite3.Error):
+        return UNREADABLE, "baza jest, ale nie dało się jej odczytać"
+    return "", ""
 
 
 class Controller:
@@ -54,7 +75,20 @@ class Controller:
             print()
             print(color(i18n.t("common.cancelled"), "yellow", self.color))
             return None
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:
+            status, why = _classify(exc)
+            if status:
+                # Record it.  A module that could not read its evidence returns a
+                # finding saying so, so the run leaves a trace instead of a hole.
+                result = self.ctx.new_result(module_id)
+                result.add(
+                    "critical",
+                    f"{status} — {why}",
+                    detail=f"{type(exc).__name__}: {exc}",
+                    values={"status": status, "module": module_id},
+                )
+                result.note(f"{module_id}: {status} — {type(exc).__name__}: {exc}")
+                return self.ctx.record(result)
             print(color(f"{i18n.t('common.error')}: {type(exc).__name__}: {exc}", "red", self.color))
             import traceback
 

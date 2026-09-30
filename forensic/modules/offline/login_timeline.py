@@ -16,6 +16,7 @@ import time
 
 from ...core import appdata, timeline as tl
 from ...core.export import to_csv, to_json
+from ...core.readlog import ABSENT, ReadLog
 from ...core.findings import ModuleResult
 from ...core.session import Ctx
 from ...core.sqlite_tools import connect
@@ -83,8 +84,28 @@ def run(ctx: Ctx, params: dict) -> ModuleResult:
             "by_source": events.by_source(),
             "by_day": events.by_day(),
             "last_per_source": tl.last_per_source(events)[:20],
+            # A count with holes in it is not a count.  ``complete`` is the one
+            # word that tells a reader of the exported JSON that the timeline
+            # may be missing events rather than that there were none.
+            "complete": events.complete,
+            "read_errors": len(events.read_errors),
         },
     )
+    if events.read_errors:
+        res.add(
+            "warn",
+            f"Osz z {len(events.read_errors)} źródłami nieczytelnymi",
+            detail=(
+                "te źródła nie zostały odczytane, więc zdarzeń z nich brakuje; "
+                "ich brak w osi czasu nie oznacza, że nic się nie wydarzyło — "
+                + "; ".join(
+                    f"{entry['artifact']}: {entry['status']}"
+                    + (f" ({entry['why'][:60]})" if entry.get("why") else "")
+                    for entry in events.read_errors[:5]
+                )
+            ),
+            values={"read_errors": events.read_errors[:20]},
+        )
     mail_grant = _mail_grant(accounts_events)
     if mail_grant:
         res.add(
@@ -342,9 +363,16 @@ def _messenger(ctx: Ctx) -> tl.Timeline:
     out = tl.Timeline(label="messenger")
     local = _local(ctx, MESSENGER_PREFS)
     if not local:
+        out.read_errors.append(
+            {"artifact": MESSENGER_PREFS, "status": ABSENT, "why": "brak pliku w obrazie"}
+        )
         return out
     report = appdata.messenger_prefs_db(local)
-    for key, _type, value in appdata.preferences_rows(local):
+    # A read that failed must not leave an empty timeline looking like a device
+    # that never logged in to Messenger.  The events are still added from
+    # whatever was readable; what changes is that the gap is named.
+    log = ReadLog()
+    for key, _type, value in appdata.preferences_rows(local, log):
         text = str(key)
         if text in MESSENGER_KEYS or any(text.startswith(p) for p in MESSENGER_PREFIXES):
             if text == "/auth/auth_machine_id":
@@ -358,6 +386,7 @@ def _messenger(ctx: Ctx) -> tl.Timeline:
                     package="messenger",
                 )
             )
+    out.read_errors.extend(log.entries)
     for account in report.get("accounts", []):
         out.add(
             tl.make_event(

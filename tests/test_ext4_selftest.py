@@ -142,3 +142,108 @@ def test_erofs_and_f2fs_when_the_tools_are_there(selftest_result):
         if not part.get("available"):
             continue
         assert part["ok"], part
+
+
+# --- corrupted bytes ---------------------------------------------------------
+# The variants above test *formats* the reader should handle or refuse.  These
+# test the reader against an image whose bytes have been damaged, where the one
+# invariant is that it never opens without complaint and returns nothing — the
+# silent failure a report cannot tell from an empty filesystem.
+
+
+@requires_e2fsprogs
+def test_corrupted_image_is_never_silently_empty(selftest_result):
+    """The invariant, over every corruption case.
+
+    Not "it does not crash" — that was always true.  ``silent`` is the bucket
+    where the reader opened the image, raised nothing, and produced an empty
+    tree.
+    """
+    corruption = selftest_result["corruption"]
+    if not corruption.get("available"):
+        pytest.skip(corruption.get("why", "brak e2fsprogs"))
+    assert corruption["cases"] >= 8, corruption["cases"]
+    assert corruption["silent"] == [], [
+        e["name"] for e in corruption["detail"] if e.get("silent")
+    ]
+
+
+@requires_e2fsprogs
+def test_each_corruption_meets_its_own_expectation(selftest_result):
+    """Per-case: refuse where the bytes cannot be trusted, accept where they can.
+
+    A zeroed block bitmap is readable and the bitmap really does say what the
+    reader will report, so refusing it would be refusing the truth.  A superblock
+    whose magic is gone is not readable and must be refused.
+    """
+    corruption = selftest_result["corruption"]
+    if not corruption.get("available"):
+        pytest.skip(corruption.get("why", "brak e2fsprogs"))
+    assert corruption["wrong"] == [], [
+        e["name"] for e in corruption["detail"] if e.get("unexpected")
+    ]
+
+
+@requires_e2fsprogs
+def test_extent_past_end_of_image_is_truncation_not_padding(selftest_result):
+    """The regression this whole turn started from, in the self-test's own terms.
+
+    An extent claiming 32768 blocks on a 16384-block volume reaches past the end
+    of the image.  Zero-filling those blocks would give the reader a directory of
+    NULs and no error; the read has to say the evidence stops there.
+    """
+    corruption = selftest_result["corruption"]
+    if not corruption.get("available"):
+        pytest.skip(corruption.get("why", "brak e2fsprogs"))
+    by_name = {e["name"]: e for e in corruption["detail"]}
+    extent = by_name["extent_count_huge"]
+    assert extent["truncated"] is True, extent
+    assert "TruncatedEvidenceError" in extent["error"], extent
+
+
+@requires_e2fsprogs
+def test_inode_table_beyond_end_of_image_is_truncation(selftest_result):
+    corruption = selftest_result["corruption"]
+    if not corruption.get("available"):
+        pytest.skip(corruption.get("why", "brak e2fsprogs"))
+    by_name = {e["name"]: e for e in corruption["detail"]}
+    entry = by_name["inode_table_past_eof"]
+    assert entry["truncated"] is True, entry
+    assert "TruncatedEvidenceError" in entry["error"], entry
+
+
+@requires_e2fsprogs
+def test_truncation_is_its_own_bucket_and_not_a_format_error(selftest_result):
+    """``TruncatedEvidenceError`` must not be reported as "wrong filesystem".
+
+    If the harness lumped it in with ``Ext4Error``, a reader could later start
+    reporting missing evidence as a damaged format and this self-test would keep
+    passing — it would only be counting refusals either way.
+    """
+    corruption = selftest_result["corruption"]
+    if not corruption.get("available"):
+        pytest.skip(corruption.get("why", "brak e2fsprogs"))
+    truncated = [e for e in corruption["detail"] if e.get("truncated")]
+    assert truncated, "żaden przypadek ucięcia nie został rozpoznany"
+    for entry in truncated:
+        assert entry["refused"] is True
+        assert entry["silent"] is False
+
+
+@requires_e2fsprogs
+def test_zeroed_block_bitmap_is_accepted_not_refused(selftest_result):
+    """The case where refusing would be refusing the truth.
+
+    A zeroed bitmap says every block in the group is free, and that is a
+    statement about the image rather than a defect in the reader.  The self-test
+    records this as accepted on purpose, so a later change that starts rejecting
+    it fails here rather than in the field.
+    """
+    corruption = selftest_result["corruption"]
+    if not corruption.get("available"):
+        pytest.skip(corruption.get("why", "brak e2fsprogs"))
+    by_name = {e["name"]: e for e in corruption["detail"]}
+    bitmap = by_name["block_bitmap_zeroed"]
+    assert bitmap["expect_refuse"] is False
+    assert bitmap["opened"] is True
+    assert bitmap["refused"] is False

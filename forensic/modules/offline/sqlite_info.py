@@ -46,8 +46,10 @@ def run(ctx: Ctx, params: dict) -> ModuleResult:
         if not header.get("is_sqlite"):
             res.add("warn", f"To nie jest baza SQLite: {target}", values={"path": str(local)})
             continue
+        unreadable = report.get("unreadable_tables", [])
         values = {
             "path": str(local),
+            "status": report.get("status"),
             "size": human_bytes(header.get("size", 0)),
             "page_size": header.get("page_size"),
             "page_count": header.get("page_count_real"),
@@ -57,10 +59,27 @@ def run(ctx: Ctx, params: dict) -> ModuleResult:
             "integrity": report.get("integrity"),
             "tables": len(report.get("tables", [])),
             "non_empty_tables": report.get("non_empty_tables"),
+            "unreadable_tables": unreadable,
             "companions": list(report.get("companions", {}).keys()),
             "seconds": round(time.time() - started, 2),
         }
-        severity = "ok" if report.get("integrity") == "ok" else "warn"
+        # A database we could not count is a different finding from a database
+        # that failed its own integrity check: the first means this tool learned
+        # nothing, the second means the file says it is damaged.  Reporting the
+        # second for the first would blame the evidence for our failure.
+        if unreadable:
+            res.add(
+                "warn",
+                f"Nie udało się odczytać {len(unreadable)} tabeli: {target}",
+                detail=(
+                    f"status UNREADABLE — tabele {', '.join(unreadable[:8])}"
+                    f"{' …' if len(unreadable) > 8 else ''}; ich zawartość jest "
+                    f"nieznana, a nie pusta"
+                ),
+                values=values,
+                artifacts=[str(local)],
+            )
+        severity = "ok" if report.get("integrity") == "ok" and not unreadable else "warn"
         res.add(
             severity,
             f"SQLite: {target}",

@@ -3,6 +3,80 @@
 Wersje narzędzia. Każda tura planu (`PLAN.md`) to jedna wersja; numery
 commitów i wyniki weryfikacji są w `PLAN.md` w sekcji „CHECKPOINTY".
 
+## 0.14.0 — nieudane odczytanie przestaje być cichą czystą negatywą
+
+Stan bazowy, na obrazie referencyjnym 27 GB i świeżym katalogu roboczym:
+**33 checki, 722 asercje, 31 PASS, 2 Niezgodne** — te same dwa co przed turą
+(`apps.edl_acquire`, `report.secret_audit`). **119 testów** przechodzi, było 96.
+Samotest ext4: 10 wariantów formatu bez zmian (`silent: 0`) plus **10 przypadków
+uszkodzonych bajtów**.
+
+**Cztery stany, nie dwa.** Parser ma trzy odpowiedzi dla każdego artefaktu i
+`PRESENT` / `ABSENT` / `UNREADABLE` nie są wariantami jednej. Trzecia ginęła,
+bo naturalny sposób obsługi wyjątku to złapać go i zwrócić pusty wynik — a
+pusty wynik to **wartość**, więc płynie dalej i jest ostatecznie wydrukowana jako
+licznik zer. `except sqlite3.Error: return []` jest właśnie tym kształtem.
+
+Nowe `forensic/core/readlog.py` — `ReadLog` plus te cztery słowa. To nie jest
+nowy pomysł: czytniki filesystemów niosą `walk_errors` od kilku tur dokładnie z
+tego powodu, a `walk_errors` dotarło do `reporting.py`. Teraz ten wzorzec jest
+uogólniony, bo jedno nieudane źródło nie może chować się za modułem, który
+zwrócił zero.
+
+**`count_rows` zwracał `-1`, a `-1` jest prawdziwe.** `quicklook` budował
+`non_empty_tables = {k: v for k, v in counts.items() if v}`. Tabela, której
+`count(*)` się nie powiodło, wracała jako `-1`, przechodziła ten filtr i
+pojawiała się w raporcie wśród tabel, **które coś zawierają**. Teraz `None`.
+`quicklook` ma też `status` i `unreadable_tables`.
+
+**`get(key, 0)` na kluczu celowo pominiętym.** `_whatsapp_type_profile` zostawiał
+`starred` nieustawione, gdy zapytanie padło, a `whatsapp.py` czytał
+`msgstore.get('starred', 0)` i drukował *„0 oznaczonych gwiazdką"* — twierdzenie o
+urządzeniu, na dowodzie, którego nie przeczytano. Teraz `None`, a `_counts_sentence`
+rozróżnia sześć stanów; `forwarded` był chroniony, `starred` nie.
+
+**Uciekający `sqlite3.Error` gubił wynik w całości.** `controller.run_module`
+łapał `Exception`, drukował linię i zwracał `None`: brak findings, brak eksportu,
+nic w `verify.json`. Dziś `TruncatedEvidenceError` i `sqlite3.Error` dostają
+własne findingi (`UNREADABLE`, `TRUNCATED`) z notatką, która trafia do
+`session.json`. Pozostałe wyjątki wciąż idą w `traceback`, bo błąd w kodzie nie
+jest twierdzeniem o dowodzie i nie może zostać wygładzony do findingu.
+
+**Oś czasu niesie własne luki.** `Timeline.read_errors` i `Timeline.complete` —
+luka nie może być zdarzeniem, bo zdarzenie deklaruje znacznik czasu i źródło, a
+to nie ma żadnego. `login_timeline` przy pustej bazie prefs zostawiał pustą oś
+„messenger", która wyglądała jak telefon, na którym nikt się nie logował.
+`fb_tokens` mówił „0 dokumentów, 0 tokenów", w tym z bazy, której nie otworzył —
+i czytał tę tabelę dwa razy.
+
+**`_probe` w samoteście nie odróżniał ucięcia od zepsutego formatu**, a to jest
+dokładnie ten przypadek, który `TruncatedEvidenceError` od początku był
+oddzielny. Osobny kubełek.
+
+**10 przypadków uszkodzonych bajtów.** Ta sama czysta kopia z `mke2fs`, uszkodzona
+w jednym miejscu: `s_magic`, `s_blocks_count`, deskryptor grup, `bg_inode_table`
+poza EOF, `i_mode`, `i_size`, `ee_len` sięgający za koniec, bitmapa bloków,
+ucięcie o blok, ucięcie o bajt. Wymaganie jest **jedno**: czytnik nigdy nie może
+otworzyć bez błędu i zwrócić pustki. Odrzucenie jest wymagane tylko tam, gdzie
+uszkodzone bajty nie da się wiarygodnie odczytać — **wyzerowana bitmapa bloków ma
+być przyjęta**, bo bitmapa naprawdę tak twierdzi i to nie jest wymysł czytnika.
+
+Dwie błędy w samej maszynie, warte zapisania:
+
+1. `_offsets_for` liczył offset inoda z `first_data_block + 1`, czyli z bloku po
+   superbloku, gdzie jest **tablica deskryptorów**, nie tablica inodów. Trzy
+   uszkodzenia lądowały w obszarze deskryptorów, nie zmieniały niczego, a
+   samotest raportował je jako *przyjęte z trzema wpisami w katalogu root*.
+   Uszkodzenie, które trafi w wolne miejsce, jest nieodróżnialne od czytnika,
+   który je obsłużył.
+2. `ee_len` pisany pod `+0x28 + 4`, czyli do `eh_max`. Rekord zaczyna się 12 B za
+   nagłówkiem extenta, więc `ee_len` jest o 4 B dalej.
+
+Testy: `tests/test_read_errors.py` (17) — cztery stany, `count_rows` → `None`,
+`starred` niezerowe, uciekający `DatabaseError` zapisany, a `TypeError` wciąż
+traceback; oraz 6 przypadków w `tests/test_ext4_selftest.py`. Sprawdzone, że
+`count_rows` test pada na starej implementacji z `-1`.
+
 ## 0.13.0 — integralność dowodu: obraz ucięty przestaje udawać czytelny
 
 Stan bazowy, zmierzony na obrazie referencyjnym 27 GB i na **świeżym katalogu

@@ -10,6 +10,8 @@ import struct
 from pathlib import Path
 from typing import Any, Literal, overload
 
+from .readlog import PRESENT, UNREADABLE
+
 SIDE_CARS = ("-wal", "-shm", "-journal")
 BTREE_LEAF_TABLE = 0x0D
 BTREE_INTERIOR_TABLE = 0x05
@@ -114,15 +116,29 @@ def columns(conn: sqlite3.Connection, table: str) -> list[tuple]:
     return [(row[1], row[2]) for row in conn.execute(f"pragma table_info({quoted})")]
 
 
-def count_rows(conn: sqlite3.Connection, table: str, limit: int = 5_000_000) -> int:
+def count_rows(conn: sqlite3.Connection, table: str, limit: int = 5_000_000) -> int | None:
+    """Rows in ``table``, or ``None`` when the count could not be read.
+
+    ``None`` and not ``-1``, because the caller filters on truthiness:
+    ``non_empty_tables = {k: v for k, v in counts.items() if v}`` treats ``-1`` as
+    a count and puts a table we could not read into the list of tables that have
+    something in them.  A failure would then be reported as evidence of content.
+    """
     quoted = '"' + table.replace('"', '""') + '"'
     try:
         return int(conn.execute(f"select count(*) from {quoted}").fetchone()[0])
     except Exception:
-        return -1
+        return None
 
 
 def peek(conn: sqlite3.Connection, table: str, limit: int = 5) -> list[tuple]:
+    """Up to ``limit`` rows of ``table``; empty list when it cannot be read.
+
+    The emptiness is ambiguous on its own — it is the same value an empty table
+    gives — so callers that care must ask :func:`count_rows` for the same table
+    and check for ``None``.  :func:`quicklook` does exactly that, which is why
+    this function can stay a plain list without lying to anybody.
+    """
     quoted = '"' + table.replace('"', '""') + '"'
     try:
         return conn.execute(f"select * from {quoted} limit ?", (limit,)).fetchall()
@@ -130,17 +146,30 @@ def peek(conn: sqlite3.Connection, table: str, limit: int = 5) -> list[tuple]:
         return []
 
 
-def row_counts(conn: sqlite3.Connection, limit: int = 200) -> dict[str, int]:
-    out: dict[str, int] = {}
+def row_counts(conn: sqlite3.Connection, limit: int = 200) -> dict[str, int | None]:
+    out: dict[str, int | None] = {}
     for table in tables(conn)[:limit]:
         out[table] = count_rows(conn, table)
     return out
 
 
 def quicklook(path: str | Path, top_tables: int = 12, sample: int = 3) -> dict:
-    """Everything a first-pass report needs from one database file."""
+    """Everything a first-pass report needs from one database file.
+
+    Carries a ``status`` of ``PRESENT`` or ``UNREADABLE`` — a caller that wants
+    the third state from this vocabulary asks for the path first, because a file
+    that is not there is not something this function can open.  The counts that
+    came back as ``None`` are named in ``unreadable_tables`` instead of being
+    folded into ``non_empty_tables``, which is where a truthy sentinel used to
+    put them.
+    """
     path = Path(path)
-    report: dict[str, Any] = {"file": str(path), "header": header(path), "companions": sidecars(path)}
+    report: dict[str, Any] = {
+        "file": str(path),
+        "status": UNREADABLE,
+        "header": header(path),
+        "companions": sidecars(path),
+    }
     if not report["header"].get("is_sqlite"):
         report["error"] = "not a SQLite database"
         return report
@@ -156,12 +185,22 @@ def quicklook(path: str | Path, top_tables: int = 12, sample: int = 3) -> dict:
         report["objects"] = objects(conn)
         report["tables"] = tables(conn)
         counts = row_counts(conn)
+        unreadable = [name for name, value in counts.items() if value is None]
         report["row_counts"] = counts
-        report["non_empty_tables"] = {k: v for k, v in counts.items() if v}
-        report["samples"] = {
-            table: peek(conn, table, sample) for table in list(counts)[:top_tables]
+        report["unreadable_tables"] = unreadable
+        report["non_empty_tables"] = {
+            name: value for name, value in counts.items() if value
         }
-        report["columns"] = {table: columns(conn, table) for table in list(counts)[:top_tables]}
+        readable = [name for name, value in counts.items() if value is not None]
+        report["samples"] = {
+            table: peek(conn, table, sample) for table in readable[:top_tables]
+        }
+        report["columns"] = {
+            table: columns(conn, table) for table in readable[:top_tables]
+        }
+        # A database whose every table failed to count has been read as much as
+        # this function manages, and what came back is not an account of it.
+        report["status"] = UNREADABLE if len(unreadable) == len(counts) and counts else PRESENT
     finally:
         conn.close()
     return report

@@ -21,6 +21,7 @@ from ...core.appdata import MAGIC_PROBE_BYTES
 from ...core.export import to_csv, to_json
 from ...core.findings import ModuleResult
 from ...core.masking import token_of
+from ...core.readlog import PRESENT, UNREADABLE, ReadLog
 from ...core.session import Ctx
 from ..registry import ModuleSpec, Param, register
 
@@ -53,6 +54,7 @@ def run(ctx: Ctx, params: dict) -> ModuleResult:
             {
                 "source": target,
                 "kind": kind,
+                "status": source["status"],
                 "format": source["format"],
                 "raw_hits": source["raw_hits"],
                 "noise_hits": source["noise_hits"],
@@ -60,6 +62,20 @@ def run(ctx: Ctx, params: dict) -> ModuleResult:
                 "size": source["size"],
             }
         )
+        if source["status"] == UNREADABLE:
+            # Said out loud, because the finding below counts tokens and a
+            # source that yielded none because it could not be opened must not
+            # be summed in with the sources that yielded none because the
+            # tokens are not there.
+            res.add(
+                "warn",
+                f"Nie dało się odczytać {target}",
+                detail=(
+                    "status UNREADABLE — zawartość tej bazy jest nieznana, "
+                    "a nie pusta; tokeny z niej nie zostały policzone"
+                ),
+                values=source.get("read_errors", {}),
+            )
     real = _deduplicate(hits)
     for item in real:
         res.add(
@@ -177,9 +193,11 @@ def _source(ctx: Ctx, target: str, kind: str) -> dict | None:
         return None
     blob = Path(local).read_bytes()
     verdict = appdata.classify_checked(blob[:MAGIC_PROBE_BYTES])
+    log = ReadLog()
     out: dict = {
         "source": target,
         "kind": kind,
+        "status": PRESENT,
         "size": len(blob),
         "format": verdict["report"],
         "format_ours": verdict["format"],
@@ -198,8 +216,15 @@ def _source(ctx: Ctx, target: str, kind: str) -> dict | None:
     elif kind == "prefs_db-journal":
         found = _journal_tokens(blob)
     else:
-        out["documents"] = len(appdata.preferences_documents(local))
-        found = appdata.access_tokens(appdata.preferences_documents(local))
+        # Read the table once.  It was read twice here, and a caller that could
+        # not read it at all reported zero documents and zero tokens — a clean
+        # negative on a database it never opened.
+        documents = appdata.preferences_documents(local, log)
+        out["documents"] = len(documents)
+        found = appdata.access_tokens(documents)
+    if len(log):
+        out["status"] = UNREADABLE
+        out["read_errors"] = log.summary(str(local))
     for item in found:
         if item["noise"]:
             continue

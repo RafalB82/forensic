@@ -22,6 +22,25 @@ from ...core.masking import phone_of
 from ...core.session import Ctx
 from ..registry import ModuleSpec, Param, register
 
+
+def _counts_sentence(msgstore: dict) -> str:
+    """The ``forwarded`` / ``starred`` counts, or a note that they are unknown.
+
+    Both keys are ``None`` when their query failed and absent when the column is
+    not in this version of the database.  Those are three different states —
+    a count, something we could not read, and a feature this build never had —
+    and this sentence says which, because ``get(key, 0)`` says "zero" for all
+    three and a report that claims zero stars on a database it failed to read is
+    asserting something it does not know.
+    """
+    parts = []
+    for key, label in (("forwarded", "przekazanych dalej"), ("starred", "oznaczonych gwiazdką")):
+        if key not in msgstore:
+            continue
+        value = msgstore[key]
+        parts.append(f"{value} {label}" if value is not None else f"{label}: nieczytelne")
+    return ", ".join(parts) + "." if parts else ""
+
 APP_DIR = "/data/com.whatsapp"
 DATABASES = f"{APP_DIR}/databases"
 PREFS = f"{APP_DIR}/shared_prefs"
@@ -128,12 +147,7 @@ def run(ctx: Ctx, params: dict) -> ModuleResult:
                                 sorted(kinds.items(), key=lambda kv: -kv[1])),
                     detail=(
                         f"kolumna {column}; kody niekatalogowane są liczone, nie pomijane. "
-                        + (
-                            f"{msgstore['forwarded']} przekazanych dalej, "
-                            f"{msgstore.get('starred', 0)} oznaczonych gwiazdką."
-                            if msgstore.get("forwarded") is not None
-                            else ""
-                        )
+                        + _counts_sentence(msgstore)
                     ),
                     values={
                         "type_column": column,

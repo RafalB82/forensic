@@ -305,6 +305,13 @@ class Timeline:
 
     events: list[Event] = field(default_factory=list)
     label: str = ""
+    #: Sources that were read and could not be.  Same shape and same reason as
+    #: ``forensic.core.ext4.Ext4.walk_errors``: an artifact that could not be
+    #: read is missing evidence, and a timeline built without it is a smaller
+    #: timeline rather than a truer one.  Kept beside the events instead of
+    #: folded into them — a gap cannot be an event, because an event claims a
+    #: timestamp and a source, and this has neither.
+    read_errors: list[dict] = field(default_factory=list)
 
     def add(self, event: Event | None) -> Timeline:
         if event is not None:
@@ -313,7 +320,18 @@ class Timeline:
 
     def extend(self, other: Timeline) -> Timeline:
         self.events.extend(other.events)
+        self.read_errors.extend(other.read_errors)
         return self
+
+    @property
+    def complete(self) -> bool:
+        """True when every source asked for was read.
+
+        A report that prints this says the timeline is the whole story.  One that
+        omits it invites a reader to treat an empty Messenger timeline as
+        evidence that nobody ever logged in.
+        """
+        return not self.read_errors
 
     def sorted(self) -> list[Event]:
         return sorted(self.events, key=lambda item: (item.unix, item.source))

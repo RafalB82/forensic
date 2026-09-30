@@ -44,7 +44,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ...core.ext4 import Ext4, Ext4Error
+from ...core.evidence import TruncatedEvidenceError
+from ...core.ext4 import EXT4_ROOT_INODE, Ext4, Ext4Error
 from ...core.findings import ModuleResult
 from ...core.session import Ctx
 from ..registry import LIST, ModuleSpec, Param, register
@@ -1629,7 +1630,6 @@ def _check_formats(root: Path) -> dict[str, Any]:
     unrecognised.
     """
     from ...core import fsformat
-    from ...core.ext4 import Ext4, Ext4Error
 
     results: list[dict[str, Any]] = []
     wrong: list[str] = []
@@ -1767,6 +1767,284 @@ def _attach_xattr(root: Path, variant: Variant) -> dict[str, Any]:
         check.close()
 
 
+@dataclass(frozen=True)
+class Corruption:
+    """One structure damaged in one specific way, and what must not happen.
+
+    The invariant is ``never silent``.  Whether a damaged filesystem must be
+    *refused* is a separate question with a separate answer per structure: a
+    zeroed block bitmap can be read, and reading it is the honest result, because
+    the bitmap genuinely says something and the reader did not invent it.  A
+    superblock whose magic is gone is not readable at all and must be refused.
+
+    So each case declares ``expect_refuse`` and every case must satisfy
+    ``never silent``.  The critical finding this module exists for is a reader
+    that opens the image, reports no exception, and produces an empty tree — a
+    report cannot tell that from an empty filesystem.
+    """
+
+    name: str
+    #: Patches bytes at the offsets it is given.  Offsets are resolved by opening
+    #: the image with our own reader first, so a fixture does not hardcode an
+    #: offset that a different block size would put somewhere else.
+    damage: Any
+    why: str
+    expect_refuse: bool = True
+    #: What the damage must NOT achieve, in the module's own terms.
+    never: str = ""
+
+
+def _inode_offset(fs: Ext4, number: int) -> int:
+    """Byte offset of an inode, mirroring :meth:`Ext4.inode` exactly."""
+    sb = fs.superblock
+    group, index = divmod(number - 1, sb["inodes_per_group"])
+    table = fs._groups[group]["inode_table"]
+    per_block = sb["block_size"] // sb["inode_size"]
+    return (table + index // per_block) * sb["block_size"] + (
+        index % per_block
+    ) * sb["inode_size"]
+
+
+def _offsets_for(path: Path) -> dict[str, Any]:
+    """Byte offsets of the structures the corruptions target.
+
+    Read through our own reader on purpose.  Hardcoding ``blocks_count * 4`` or
+    an inode table number would encode a block size into a fixture that is meant
+    to be built by ``mke2fs``, and the offset would be wrong for every variant
+    that is not 4 KiB — a corruption that lands in free space tests nothing and
+    reports as accepted.
+    """
+    with Ext4(str(path)) as fs:
+        sb = fs.superblock
+        out: dict[str, Any] = {
+            "block_size": sb["block_size"],
+            "size": path.stat().st_size,
+            "sb_offset": 1024 + 0x38,               # s_magic
+            "sb_blocks_count": 1024 + 0x04,         # s_blocks_count
+            "gd_block": (sb["first_data_block"] + 1) * sb["block_size"],
+            "inode_table": fs._groups[0]["inode_table"] * sb["block_size"],
+            # The root inode, placed the way :meth:`Ext4.inode` places it: find the
+            # group's inode table, then divide the index by how many inodes fit
+            # in a block.  The first version of this used ``first_data_block + 1``
+            # — the block after the superblock, which holds the group *descriptor*
+            # table — and so computed offset 4352 on a 4 KiB volume whose inode
+            # table is at 167936.  All three inode corruptions landed in the
+            # descriptor area, changed nothing, and the self-test reported them as
+            # accepted with three root entries.  A corruption that lands in free
+            # space is indistinguishable from a reader that handled one, which is
+            # the exact reason this helper exists.
+            "root_inode": _inode_offset(fs, EXT4_ROOT_INODE),
+            "block_bitmap": fs._groups[0]["block_bitmap"] * sb["block_size"],
+        }
+        try:
+            node = fs.inode(EXT4_ROOT_INODE)
+            if node.extents:
+                out["root_data_block"] = node.extents[0].physical * sb["block_size"]
+        except (Ext4Error, KeyError):
+            pass
+        return out
+
+
+def _corrupt(path: Path, patches: list[tuple[int, bytes]]) -> None:
+    with open(path, "r+b") as handle:
+        for offset, data in patches:
+            handle.seek(offset)
+            handle.write(data)
+
+
+def _zero(n: int) -> bytes:
+    return bytes(n)
+
+
+def _ff(n: int) -> bytes:
+    return b"\xff" * n
+
+
+def _corruption_cases() -> list[tuple[str, Any]]:
+    """``(name, function(image) -> list[(offset, bytes)])`` for each case.
+
+    A function rather than a constant because the offsets depend on the image,
+    and an image is built per run.
+    """
+
+    def sb_magic(image: Path) -> list[tuple[int, bytes]]:
+        off = _offsets_for(image)
+        return [(off["sb_offset"], _zero(2))]
+
+    def sb_blocks_count(image: Path) -> list[tuple[int, bytes]]:
+        """Declare far more blocks than the file holds.
+
+        The filesystem's own statement about its size is now bigger than the
+        evidence.  ``truncated_bytes`` should say so at open time, and any read
+        past the cut must raise rather than be padded out to the declared length.
+        """
+        off = _offsets_for(image)
+        return [(off["sb_blocks_count"], _ff(4))]
+
+    def gd_zeroed(image: Path) -> list[tuple[int, bytes]]:
+        off = _offsets_for(image)
+        return [(off["gd_block"], _zero(off["block_size"]))]
+
+    def inode_table_past_eof(image: Path) -> list[tuple[int, bytes]]:
+        off = _offsets_for(image)
+        return [(off["gd_block"] + 0x08, _ff(4))]
+
+    def inode_mode_zero(image: Path) -> list[tuple[int, bytes]]:
+        off = _offsets_for(image)
+        return [(off["root_inode"], _zero(2))]
+
+    def inode_size_huge(image: Path) -> list[tuple[int, bytes]]:
+        """``i_size`` far beyond the blocks the filesystem has."""
+        off = _offsets_for(image)
+        return [(off["root_inode"] + 0x04, _ff(4))]
+
+    def extent_count_huge(image: Path) -> list[tuple[int, bytes]]:
+        """The root's first extent claims a huge run starting at block zero.
+
+        ``ee_len`` is 16 bits and its high bit is the uninitialised flag, so a
+        plain ``0xFFFF`` is the largest run the format can express — 32768 blocks
+        on a 4 KiB volume, 128 MiB, far past the end of a 64 MiB image.
+        """
+        off = _offsets_for(image)
+        # i_block starts at 0x28 inside the inode; the 12-byte extent header
+        # sits at its front, so the first record is at +12 and ``ee_len`` — the
+        # second field of that record — is 4 bytes further on.  Writing at +4
+        # instead lands on ``eh_max`` and changes nothing an extent tree depends
+        # on, which the self-test reported as an accepted variant and no warning.
+        return [(off["root_inode"] + 0x28 + 12 + 4, _ff(2))]
+
+    def block_bitmap_zero(image: Path) -> list[tuple[int, bytes]]:
+        off = _offsets_for(image)
+        return [(off["block_bitmap"], _zero(off["block_size"]))]
+
+    def truncate_block(image: Path) -> list[tuple[int, bytes]]:
+        off = _offsets_for(image)
+        with open(image, "r+b") as handle:
+            handle.truncate(off["size"] - off["block_size"])
+        return []
+
+    def truncate_byte(image: Path) -> list[tuple[int, bytes]]:
+        off = _offsets_for(image)
+        with open(image, "r+b") as handle:
+            handle.truncate(off["size"] - 1)
+        return []
+
+    return [
+        ("sb_magic", sb_magic),
+        ("sb_blocks_count", sb_blocks_count),
+        ("gd_zeroed", gd_zeroed),
+        ("inode_table_past_eof", inode_table_past_eof),
+        ("inode_mode_zero", inode_mode_zero),
+        ("inode_size_huge", inode_size_huge),
+        ("extent_count_huge", extent_count_huge),
+        ("block_bitmap_zeroed", block_bitmap_zero),
+        ("truncate_one_block", truncate_block),
+        ("truncate_one_byte", truncate_byte),
+    ]
+
+
+#: What each corruption is for, and — where the honest answer is not "refuse" —
+#: what the reader is allowed to do instead.
+CORRUPTION_WHY: dict[str, tuple[str, bool]] = {
+    "sb_magic": ("s_magic nie jest 0xEF53 — to nie jest filesystem", True),
+    "sb_blocks_count": (
+        "s_blocks_count deklaruje więcej bloków, niż jest w pliku; obraz jest "
+        "ucięty i musi tak powiedzieć, zanim cokolwiek przeczyta",
+        False,
+    ),
+    "gd_zeroed": (
+        "tablica deskryptorów grup wyzerowana — inode_table wskazuje blok 0, "
+        "czyli na metadane",
+        True,
+    ),
+    "inode_table_past_eof": (
+        "bg_inode_table wskazuje za koniec obrazu — tablica inodów jest poza plikiem",
+        False,
+    ),
+    "inode_mode_zero": ("i_mode zerowy — inode nie jest plikiem, katalogiem ani dowiązaniem", False),
+    "inode_size_huge": ("i_size korzenia ogromne przy niezmienionej mapie bloków", False),
+    "extent_count_huge": (
+        "ee_len korzenia to 32768 bloków przy obrazie 64 MiB —extent sięga za "
+        "koniec pliku; czytanie tego zakresu musi zgłosić ucięcie, nie wypełnić go zerami",
+        False,
+    ),
+    "block_bitmap_zeroed": (
+        "bitmap bloków wyzerowany — czytelnik MOŻE to przyjąć i zaraportować "
+        "bloki jako wolne; bitmapa naprawdę tak twierdzi i to nie jest zmyślone",
+        False,
+    ),
+    "truncate_one_block": ("brak ostatniego bloku obrazu", False),
+    "truncate_one_byte": ("brak ostatniego bajtu obrazu", False),
+}
+
+
+def _check_corruption(root: Path, base: Path) -> dict[str, Any]:
+    """Damage a clean image in nine ways and require the reader to stay honest.
+
+    Each case gets its own copy, because the damage is destructive and the cases
+    are independent.  The image is rebuilt from ``mke2fs`` for each one rather
+    than re-damaged from the previous, so one case cannot mask another.
+    """
+    results: list[dict[str, Any]] = []
+    silent: list[str] = []
+    wrong: list[str] = []
+    tool = _tool("mke2fs")
+    if not tool:
+        return {"available": False, "why": "mke2fs nie jest zainstalowany (e2fsprogs)",
+                "cases": 0, "silent": [], "wrong": []}
+    for name, damage in _corruption_cases():
+        why, expect_refuse = CORRUPTION_WHY[name]
+        image = root / f"corrupt_{name}.img"
+        try:
+            with image.open("wb") as handle:
+                handle.truncate(SYNTH_SIZE)
+            code, out = _run([tool, "-q", "-F", "-t", "ext4", "-b", "4096", str(image)])
+            if code != 0:
+                results.append({"name": name, "built": False, "error": out.strip()[:200]})
+                continue
+            patches = damage(image)
+            if patches:
+                _corrupt(image, patches)
+        except OSError as exc:
+            results.append({"name": name, "built": False, "error": str(exc)[:200]})
+            continue
+        probe = _probe(image)
+        entry: dict[str, Any] = {
+            "name": name,
+            "built": True,
+            "why": why,
+            "expect_refuse": expect_refuse,
+            "opened": bool(probe.get("opened")),
+            "refused": bool(probe.get("refused")),
+            "truncated": bool(probe.get("truncated")),
+            "truncated_bytes": probe.get("truncated_bytes", 0),
+            "silent": bool(probe.get("silent")),
+            "refused_at": probe.get("refused_at", ""),
+            "error": probe.get("error", "")[:200],
+            "root_entries": probe.get("root_entries"),
+        }
+        # The invariant, stated once: never silent.
+        if entry["silent"]:
+            silent.append(name)
+        # And the per-case expectation, which is deliberately looser than
+        # "refuse" for the cases where reading the damaged bytes is the truth.
+        if expect_refuse and not entry["refused"]:
+            wrong.append(name)
+            entry["unexpected"] = (
+                "reader przyjął strukturę, której nie da się wiarygodnie odczytać"
+            )
+        results.append(entry)
+    return {
+        "available": True,
+        "cases": len(results),
+        "silent": silent,
+        "wrong": wrong,
+        "refused": sum(1 for e in results if e.get("refused")),
+        "truncated_detected": sum(1 for e in results if e.get("truncated")),
+        "detail": results,
+    }
+
+
 def _probe(image: Path) -> dict[str, Any]:
     """Open the image and actually traverse it; report what came back.
 
@@ -1785,6 +2063,11 @@ def _probe(image: Path) -> dict[str, Any]:
     try:
         fs = Ext4(str(image))
         out["opened"] = True
+        out["truncated_bytes"] = fs.truncated_bytes
+    except TruncatedEvidenceError as exc:
+        out.update({"opened": False, "refused": True, "refused_at": "open",
+                    "truncated": True, "error": f"TruncatedEvidenceError: {exc}"[:300]})
+        return out
     except Ext4Error as exc:
         out.update({"opened": False, "refused": True, "refused_at": "open", "error": str(exc)[:300]})
         return out
@@ -1834,6 +2117,14 @@ def _probe(image: Path) -> dict[str, Any]:
         }
         out["features"] = sb["features"]
         out["has_xattr_block"] = _xattr_inode_count(fs)
+    except TruncatedEvidenceError as exc:
+        # Its own bucket, and it has to be its own.  ``TruncatedEvidenceError`` is
+        # deliberately not an ``Ext4Error`` — a caller catching ``Ext4Error`` to
+        # mean "wrong format" must not swallow missing evidence — and this
+        # harness is exactly such a caller, so without this arm the distinction
+        # would be tested nowhere at all.
+        out.update({"refused": True, "refused_at": "traverse", "truncated": True,
+                    "error": f"TruncatedEvidenceError: {exc}"[:300], "silent": False})
     except Ext4Error as exc:
         out.update({"refused": True, "refused_at": "traverse", "error": str(exc)[:300],
                     "silent": False})
@@ -1971,6 +2262,7 @@ def run(ctx: Ctx, params: dict) -> ModuleResult:
         fixture = _attach_xattr(root, host)
         entry = next(e for e in parts if e["name"] == host.name)
         entry["xattr_fixture"] = fixture
+    corruption = _check_corruption(root, root / "desc32.img")
     formats = _check_formats(root)
     erofs = _build_erofs_fixture(root)
     f2fs = _build_f2fs_fixture(root)
@@ -1983,6 +2275,7 @@ def run(ctx: Ctx, params: dict) -> ModuleResult:
         "silent": len(silent),
         "unexpected": wrong,
         "geometry_mismatched": mismatched,
+        "corruption": corruption,
         "xattr_fixture": fixture,
         "formats": formats,
         "erofs": erofs,
@@ -2203,6 +2496,50 @@ def run(ctx: Ctx, params: dict) -> ModuleResult:
                     "jak pusty system plików"),
             values={"silent": silent},
         )
+    # Corruption is a separate set of cases from format variants, and the one
+    # invariant is shared: a damaged filesystem must never open without
+    # complaint and produce nothing.  Reported on its own line because
+    # "nine damaged files, all handled" reads very differently from "ten
+    # formats, one refused", and folding them into one count loses that.
+    if corruption.get("available"):
+        corrupt_silent = corruption.get("silent", [])
+        corrupt_wrong = corruption.get("wrong", [])
+        severity = "critical" if corrupt_silent or corrupt_wrong else "ok"
+        res.add(
+            severity,
+            f"Uszkodzone bajty: {corruption['cases']} przypadków, "
+            f"{corruption.get('refused', 0)} odrzuconych, "
+            f"{corruption.get('truncated_detected', 0)} uciętych wykrytych, "
+            f"{len(corrupt_silent)} cichych",
+            detail=(
+                "każdy przypadek to ta sama czysta kopia zbudowana przez mke2fs, "
+                "uszkodzona w jednym miejscu; wymaganie jest jedno — czytnik nigdy "
+                "nie może otworzyć bez błędu i zwrócić pustki. Odrzucenie jest "
+                "wymagane tylko tam, gdzie uszkodzone bajty nie da się wiarygodnie "
+                "odczytać; bitmapę bloków można przyjąć, bo bitmapa naprawdę tak "
+                "twierdzi i to nie jest pomysł czytnika"
+            ),
+            values=corruption,
+        )
+        for item in corruption.get("detail", []):
+            res.add(
+                "info",
+                f"uszkodzone: {item['name']}",
+                detail=(
+                    f"{item.get('why', '')} — "
+                    + (
+                        f"odrzucone w {item.get('refused_at', '?')}: {item.get('error', '')}"
+                        if item.get("refused")
+                        else "przyjęte"
+                    )
+                    + (
+                        f"; uciętych {item.get('truncated_bytes', 0)} B"
+                        if item.get("truncated_bytes")
+                        else ""
+                    )
+                ),
+                values=item,
+            )
     if wrong:
         res.add(
             "critical",
