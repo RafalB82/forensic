@@ -23,7 +23,7 @@ imports the parsers without executing them — and a check that fails whenever i
 is run on its own is a check that gets skipped.  A gate belongs next to the job
 that has the whole suite in front of it.
 
-Measured 2026-10-01 with 202 tests, branch coverage:
+Measured 2026-10-01 with 242 tests, branch coverage:
 
 ==================  ======  ===============================================
 part                pokrycie  what it means
@@ -31,31 +31,44 @@ part                pokrycie  what it means
 ``core/f2fs.py``      81%   the healthiest reader in the project
 ``core/ext4.py``      69%   the reader most of the evidence goes through
 ``core/erofs.py``     68%   EROFS, used by ``image_info`` and the self-test
-``core/appdata.py``    49%   Android application evidence — see below
-**project**          **37,69%**  the total, which is the least interesting number here
+``core/appdata.py``    68%   Android application evidence — see below
+**project**          **39,09%**  the total, the least interesting number here
 ``ui/curses_ui.py``    0%   needs a terminal this harness has not got
 ==================  ======  ===============================================
 
 ``core/appdata.py`` was at **13%** and was the largest real hole in the project:
-accounts, Chromium databases, Messenger preferences, WhatsApp stores, shared-prefs
-XML and protobuf blobs, all read by the module with the most forensic surface and
-the least automated coverage.  It was exercised by hand and by ``verify`` against
-the reference image, and barely by pytest.
+accounts, Chromium databases, Messenger preferences, WhatsApp stores, Wi-Fi keys,
+Signal and Messenger E2EE identity state, shared-prefs XML and protobuf blobs —
+all read by the module with the most forensic surface and the least automated
+coverage.  It was exercised by hand and by ``verify`` against the reference
+image, and barely by pytest.
 
-It moved to 49% because :mod:`tests.appdata_fixtures` builds **real files** on
-the readers' own schemas — no image, no 27 GB download, a few milliseconds each —
-and ``tests/test_appdata_formats.py`` and ``tests/test_appdata_sqlite.py`` point
-the readers at them.  What that bought is not line coverage so much as three
-things that used to be untested and are the ones that produce wrong conclusions
-about a person: an uncatalogued WhatsApp type code being counted rather than
-dropped, a missing table staying distinguishable from an empty one, and a database
-that will not open never being reported as one with nothing in it.
+It moved to 68% because :mod:`tests.appdata_fixtures` builds **real files** on the
+readers' own schemas — no image, no 27 GB download, a few milliseconds each — and
+``tests/test_appdata_formats.py``, ``tests/test_appdata_sqlite.py`` and
+``tests/test_appdata_state.py`` point the readers at them.  What that bought is
+not line coverage so much as the things that used to be untested and are the ones
+that produce wrong conclusions about a person:
 
-Still uncovered in ``appdata``, and the next candidates: ``whatsapp_axolotl``
-(Signal sessions and sender keys), ``messenger_msys`` (the E2EE identity table),
-``wifi_settings`` and ``wpa_supplicant``, ``network_stats``, and the protobuf
-helpers behind ``whatsapp_identity``.  Each needs its own fixture, and each one
-is a schema to be got right rather than a function to be exercised.
+* an uncatalogued WhatsApp type code being counted rather than dropped, and the
+  two Android columns' numberings not being interchangeable;
+* a missing table staying distinguishable from an empty one (``_count`` returns
+  ``-1`` for absent, ``0`` for empty, and both appear in the same dict);
+* a database that will not open never being reported as one with nothing in it;
+* a schema with no ``trusted`` column saying so, rather than reporting zero
+  trusted identities from a field that is not there;
+* Wi-Fi PSKs read with the quotes the file format left on them, and an open
+  network distinguished from a lost key;
+* an ANET counter's millisecond stamp taken from the **file name**, because the
+  container has no schema in this project and a reader that preferred a field
+  inside would be wrong more often.
+
+Still uncovered in ``appdata``, and the next candidates: ``whatsapp_contacts``,
+``messenger_tincan``, ``play_localappstate`` and ``_appstate_rows``,
+``miui_gallery_history``, ``package_usage``, and the token / blob scanners
+``raw_token_hits``, ``access_tokens`` and ``varint`` callers.  Each still needs
+its own schema, and each is a schema to be got right rather than a function to be
+exercised.
 
 Usage::
 
@@ -87,10 +100,11 @@ PARSER_FLOORS = {
 #:
 #: 13% when this was written, and that was the largest real hole in the project.
 #: Building ``tests/appdata_fixtures.py`` — real files on the readers' own
-#: schemas, no image needed — took it to 49%.  The floor sits below that so the
-#: next reader of this file sees how far it moved and what is still uncovered.
+#: schemas, no image needed — took it to 68% over two passes.  The floor sits
+#: below that so the next reader of this file sees how far it moved and what is
+#: still uncovered.
 APPLICATION_FLOORS = {
-    "forensic/core/appdata.py": 45.0,
+    "forensic/core/appdata.py": 65.0,
 }
 
 #: Project-wide floor.  Kept equal to ``--cov-fail-under`` in the workflow; the

@@ -3,6 +3,73 @@
 Wersje narzędzia. Każda tura planu (`PLAN.md`) to jedna wersja; numery
 commitów i wyniki weryfikacji są w `PLAN.md` w sekcji „CHECKPOINTY".
 
+## 0.19.0 — testy stanu E2EE, kluczy Wi-Fi i licznika sieciowego
+
+`core/appdata.py` **49% → 68%**, pokrycie całego pakietu **37,69% → 39,09%**,
+202 → **242 testy**. Podłoga podniesiona 45% → 65%.
+
+Trzy grupy, wspólne jedno: każda odpowiada na pytanie, które raport stawia przed
+człowiekiem.
+
+**Bazy E2EE niosą najostrzejsze sformułowania w całym narzędziu.** Werdykt
+„nie ma lokalnie materiału klucza prywatnego", gdy schemat po prostu nie ma
+takiej kolumny, to twierdzenie o urządzeniu postawione z braku danych. Dlatego
+są **oba schematy** — z kolumną `trusted` i bez niej — bo czytnik ma dla nich
+zdanie różne i obie ścieżki były niepokryte. Podobnie trzy werdykty msys
+(localna para kluczy > token autoryzacji > brak danych) i ranking między nimi.
+
+**Klucze Wi-Fi leżą jawnie na Androidzie 7, wraz z cudzysłowami**, które
+zostawił format pliku. Czytnik, który ich nie zdejmie, raportuje SSID, którego
+analyst nigdy nie widział, i PSK, którym nie podłączy sieci. Sieć bez klucza to
+nie sieć, która klucz zgubiła — dlatego obok dwóch sieci z kluczem jest trzecia,
+otwarta.
+
+**Licznik sieciowy nie ma schematu w tym projekcie.** `ConnectivityService` go
+zapisuje, a układ pól to wewnętrzna sprawa frameworka, więc czytnik raportuje
+tylko to, co da się odczytać bez zgadywania — a **znacznik milisekund bierze z
+nazwy pliku**, nie z wnętrza. Warto to przypiąć, bo czytnik, który znalazłby
+pole timestamp i dałby mu pierwszeństwo, wyglądałby staranniej i myliłby się
+częściej.
+
+**Fixture ANET musiał dwa razy, i obie porażki są pouczające.** Najpierw nazwy
+interfejsów bez cudzysłowów, potem z cudzysłowami ale **z bajtem długości
+protobuf**. Za każdym razem czytnik zwrócił pustą listę, co wygląda na
+czytnika, który nie działa, a nie na fixture, który nie pasuje do formatu.
+Ustalone: ``
+`` jest **separatorem**, nie tagiem pola z rozmiarem — w protobufie
+między tagiem a ładunkiem stałby varint długości, a wzorzec czytnika tego nie
+ma. Layout opisany w fixture i przypięty testem osobno, żeby następny
+„uprości" znalazł test, który pada.
+
+**Sześć moich błędów w tej partii**, z kodem dlaczego:
+
+| co napisałem | co jest prawdą |
+|---|---|
+| fixture `messenger_msys` | przesłania funkcję o tej samej nazwie — `PosixPath is not callable` |
+| `pb_string(2, nested)` | `nested` to bajty, nie `str` |
+| `identities == 1` | są dwie |
+| `msys counts == {}` | są trzy tabele obecne |
+| `ssids` w kolejności wstawienia | `sorted()` |
+| `3 sieci z kluczem` | cztery sieci, trzy z kluczem |
+| ANET: `
+` + długość + `"nazwa"` | `
+"` + nazwa + `"` |
+
+Ten ostatni kosztował dwa podejścia i jest najważniejszy: **fixture, który nie
+pasuje do formatu, wygląda jak zepsuty czytnik.** To ta sama odwrócona
+atrybucja co w `_offsets_for` z samotestu, gdzie uszkodzenie lądowało w wolnym
+miejscu i było nieodróżnialne od obsłużonego.
+
+Sprawdzone, że testy łapią regresje: `wifi_settings` bez zdejmowania cudzysłowów
+→ 2 testy; brak `trusted` dający `0` zamiast informacji o braku kolumny → 1;
+protobuf niezaględniający komunikatów zagnieżdżonych → 1.
+
+Podłoga `appdata` podniesiona na 65%. Nadal niepokryte i następne:
+`whatsapp_contacts`, `messenger_tincan`, `play_localappstate` z
+`_appstate_rows`, `miui_gallery_history`, `package_usage` i skanery tokenów
+(`raw_token_hits`, `access_tokens`). Każdy z nich nadal potrzebuje **własnego
+schematu**.
+
 ## 0.18.0 — testy `appdata`: z 13% do 49% na najważniejszym dla zdrowia module
 
 **`forensic/core/appdata.py` był w 13% i był największą dziurą w tym repo.**

@@ -296,3 +296,253 @@ def _blob(text: str) -> str:
 def _text(value: str) -> str:
     """A SQL literal for a TEXT value, where the reader expects a string."""
     return "'" + value.replace("'", "''") + "'"
+
+# --- Signal / WhatsApp identity state ----------------------------------------
+#
+# The two databases below are the E2EE state.  Their schemas are quoted from
+# :func:`forensic.core.appdata.whatsapp_axolotl` and
+# :func:`forensic.core.appdata.messenger_msys` — the columns the readers name in
+# their own ``select`` lists — so a reader that starts asking for a different
+# column fails here rather than reading nothing and looking fine.
+
+
+@pytest.fixture
+def wa_axolotl(tmp_path) -> Path:
+    """``axolotl.db`` — Signal sessions, identities and sender keys.
+
+    Carries an ``identities`` table **with** a ``trusted`` column and one identity
+    marked trusted, because the reader reports a different verdict for a schema
+    that has the column and one that does not, and both paths were uncovered.
+    """
+    path = tmp_path / "axolotl.db"
+    return make_sqlite(
+        path,
+        [
+            "create table sessions(identifier text, device_id integer, "
+            "session_id integer, record_mac text)",
+            "create table identities(identifier text, device_id integer, "
+            "identity_key blob, trusted integer)",
+            "create table sender_keys(sender_key text, sender_key_id integer, "
+            "sender_device_id integer, signing_key_public blob)",
+            "create table prekeys(identifier text, prekey_id integer, body blob)",
+            "create table signed_prekeys(identifier text, signed_prekey_id integer, body blob)",
+            "create table prekey_uploads(identifier text, timestamp integer)",
+            "create table message_base_key(id integer primary key, record_mac text, "
+            "base_key blob)",
+            "insert into sessions values('4815162342',1,42,'aabbcc')",
+            "insert into identities values('4815162342',1,x'0102',1)",
+            "insert into identities values('4999999999',1,x'0304',0)",
+            "insert into sender_keys values('4815162342',7,1,x'0506')",
+            "insert into prekeys values('4815162342',5,x'0708')",
+            "insert into message_base_key values(1,'ddeeff',x'090a')",
+        ],
+    )
+
+
+@pytest.fixture
+def wa_axolotl_without_trusted(tmp_path) -> Path:
+    """The same state on a schema with no ``trusted`` column.
+
+    The reader has to say that trust is not recorded, rather than reporting zero
+    trusted identities — which would be a fact about the device stated from an
+    absence of data.
+    """
+    path = tmp_path / "axolotl_no_trust.db"
+    return make_sqlite(
+        path,
+        [
+            "create table identities(identifier text, device_id integer, identity_key blob)",
+            "create table message_base_key(id integer primary key, record_mac text, base_key blob)",
+            "insert into identities values('4815162342',1,x'0102')",
+        ],
+    )
+
+
+@pytest.fixture
+def msys_db(tmp_path) -> Path:
+    """``msys_database_*`` — Messenger's E2EE identity and auth-token tables.
+
+    Named ``msys_db`` and not ``messenger_msys`` because the reader has the same
+    name: a fixture called after the function shadows it inside the test module,
+    and the failure is ``'PosixPath' object is not callable`` on every call.  The
+    first version of this fixture did exactly that.
+
+    Two identity rows, one with a private key blob and one without, because the
+    verdict sentence differs: a local key pair outranks an auth token, and an auth
+    token outranks "no data".  All three branches were uncovered.
+    """
+    path = tmp_path / "msys_database_devices"
+    return make_sqlite(
+        path,
+        [
+            "create table crypto_auth_token(verifier_id integer, token blob, "
+            "expiration_timestamp_sec integer, session_id integer)",
+            "create table secure_message_client_identity_v2(crypto_mailbox_type integer, "
+            "local_registration_id integer, identity_key_public_blob blob, "
+            "identity_key_private_blob blob, wcc_client_key_private_blob blob, "
+            "uuid text, wa_device_id integer)",
+            "create table secure_message_sender_key(sender_registration_id integer, "
+            "sender_key_id integer, sender_key_private blob)",
+            "create table message_base_key(id integer primary key, record_mac text, "
+            "base_key blob)",
+            "insert into crypto_auth_token values(10001,x'aabb',1756199200,7)",
+            # A mailbox with both halves of the key pair.
+            "insert into secure_message_client_identity_v2 values(1,42,x'0102',"
+            "x'030405',x'0607','uuid-abcd',1)",
+            # And one with only the public half.
+            "insert into secure_message_client_identity_v2 values(2,43,x'0809',"
+            "NULL,NULL,'uuid-efgh',2)",
+            "insert into secure_message_sender_key values(10001,7,x'0a0b')",
+            "insert into message_base_key values(1,'ccdd',x'0e0f')",
+        ],
+    )
+
+
+# --- Wi-Fi -------------------------------------------------------------------
+
+
+@pytest.fixture
+def wifi_settings_db(tmp_path) -> Path:
+    """``wifi_settings.db`` — saved networks, PSKs in the clear.
+
+    The quotes are kept, which is the detail the reader has to deal with: Android
+    7 stores ``ssid`` and ``psk`` with the surrounding quotes of the
+    ``wpa_supplicant.conf`` format, so a reader that does not strip them produces
+    an SSID no analyst has ever seen.
+    """
+    path = tmp_path / "wifi_settings.db"
+    return make_sqlite(
+        path,
+        [
+            "create table wifi(_id integer primary key, ssid text, bssid text, psk text, "
+            "keyMgmt text, priority integer, account text, marker text, deleted integer)",
+            "create table wifi_sync(_id integer primary key, account_name text, "
+            "marker text, sync_extra_info blob)",
+            'insert into wifi values(1,\'"Domowa"\',\'aa:bb:cc:dd:ee:01\','
+            '\'"sekretnyklucz"\',\'WPA_PSK\',0,\'com.android.Account\',\'x\',0)',
+            # An open network, deliberately: no psk is not a missing psk.
+            'insert into wifi values(2,\'"Gosc"\',\'aa:bb:cc:dd:ee:02\',NULL,'
+            '\'OPEN\',1,NULL,NULL,0)',
+            # A network deleted from the device, which must not be counted as saved.
+            'insert into wifi values(3,\'"Skasowana"\',\'aa:bb:cc:dd:ee:03\','
+            '\'"inny"\',\'WPA_PSK\',2,NULL,NULL,1)',
+            # Two networks sharing one key, so the distinct count differs from the total.
+            'insert into wifi values(4,\'"Sasiad"\',\'aa:bb:cc:dd:ee:04\','
+            '\'"sekretnyklucz"\',\'WPA_PSK\',3,NULL,NULL,0)',
+        ],
+    )
+
+
+WPA_CONF = b"""# Android Wi-Fi configuration
+# commented lines and blanks are skipped
+
+eap=PEAP
+eap_identity=android
+update_config=1
+
+network={
+    ssid="Domowa"
+    psk="sekretnyklucz"
+    key_mgmt=WPA-PSK
+    priority=0
+    scan_ssid=1
+}
+
+network={
+    ssid="Gosc"
+    key_mgmt=NONE
+}
+
+# a comment inside a block must not close it
+network={
+    ssid="Sasiad"
+    psk="innyklucz"
+    identity="someone@example.com"
+}
+"""
+
+
+@pytest.fixture
+def wpa_supplicant_conf() -> bytes:
+    """A ``wpa_supplicant.conf`` with two password networks and one open.
+
+    Contains the three things that break a naive INI parser: two globals before
+    any block, a comment **inside** a block, and a key whose value contains an
+    ``@``.  All three were uncovered.
+    """
+    return WPA_CONF
+
+
+# --- network statistics ------------------------------------------------------
+
+
+def _anet_blob(*ifaces: str) -> bytes:
+    """An ``ANET`` header carrying interface names.
+
+    **The names are quoted, and there is no length byte.**  The reader looks for
+    the marker ``\\x0a`` immediately followed by a double quote, the name, and
+    another double quote.  That is not a protobuf length-delimited field — a
+    protobuf one would carry a varint length between the tag and the payload — so
+    ``\\x0a`` is a record marker and the name is a quoted string after it.
+
+    The first version of this builder emitted the names bare, and the second
+    emitted them quoted but *with* a protobuf length byte.  Both times the reader
+    returned an empty interface list, which reads as a reader that does not work
+    rather than as a fixture that does not match the format.  The layout is now
+    spelled out here and asserted in
+    ``test_the_interface_names_are_matched_as_quoted_strings``, so the next person
+    to "simplify" it finds a test that fails.
+    """
+    out = bytearray(b"ANET")
+    out += (2).to_bytes(4, "big")  # version word
+    for index, iface in enumerate(ifaces):
+        out += b'\x0a"' + iface.encode() + b'"'
+        out += (index + 1).to_bytes(4, "little")  # the state word it reads
+    out += bytes(64)
+    return bytes(out)
+
+
+@pytest.fixture
+def anet_stats() -> bytes:
+    """A network-statistics log naming two interfaces."""
+    return _anet_blob("wlan0", "rmnet0")
+
+
+# --- protobuf ----------------------------------------------------------------
+
+
+def varint(value: int) -> bytes:
+    out = bytearray()
+    while True:
+        byte = value & 0x7F
+        value >>= 7
+        out.append(byte | (0x80 if value else 0))
+        if not value:
+            return bytes(out)
+
+
+def pb_string(number: int, text: str | bytes) -> bytes:
+    """One wire-type-2 field carrying text, or a nested message already built.
+
+    Accepts bytes as well as str because a nested message is itself a payload,
+    and building one means handing the bytes of the inner message in.
+    """
+    payload = text.encode("utf-8") if isinstance(text, str) else text
+    return varint(number << 3 | 2) + varint(len(payload)) + payload
+
+
+@pytest.fixture
+def protobuf_with_nested_strings() -> bytes:
+    """A message whose field 1 is a string and whose field 2 is a nested message.
+
+    The nesting is the point: ``_protobuf_strings`` walks into length-delimited
+    fields that are not text, which is what makes an unknown schema readable at
+    all.  A field that is a varint sits alongside them, because a walker that
+    skips wire type 0 correctly does not fall over on it.
+    """
+    nested = pb_string(1, "wewnetrzny") + pb_string(2, "drugi")
+    return (
+        pb_string(1, "zewnetrzny")
+        + varint(3 << 3) + varint(42)      # wire type 0
+        + pb_string(2, nested)
+    )
