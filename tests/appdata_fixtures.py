@@ -824,3 +824,200 @@ def java_blob_without_numbers() -> bytes:
         b"\x74\x00\x08"
         b"nieznane\x00"
     )
+
+
+# --- the last uncovered branches ---------------------------------------------
+#
+# Everything below is a *branch*, not a function: a wariant schematu albo
+# uszkodzone wejście, za którym była gałąź nigdy nie wykonana.  Listed by what
+# each one reaches.
+
+
+@pytest.fixture
+def messenger_threads_with_participants(tmp_path) -> Path:
+    """Messenger ``threads_db2`` with ``thread_participants`` — the ``_people`` path.
+
+    ``_people`` exists because a one-to-one thread carries no name and the viewer
+    is a participant of it too, so the counterpart has to be resolved through the
+    participants table.  Three thread shapes, because the function has three
+    branches and only the happy path was covered:
+
+    * ``ONE_TO_ONLY:<other>:<viewer>`` — resolvable to a name;
+    * ``ONE_TO_ONE:<other>:<viewer>`` where the other side has **no** name;
+    * ``GROUP:…`` — no shape to read, so the first named participant is used;
+    * ``ONE_TO_ONE:<unknown>:<viewer>`` — nobody resolvable, so no entry at all.
+    """
+    path = tmp_path / "threads_db_people"
+    return make_sqlite(
+        path,
+        [
+            "create table threads(thread_key text primary key, timestamp_ms integer, "
+            "name text, approx_total_message_count integer, unread_message_count integer, "
+            "snippet text, snippet_sender text, is_pin integer)",
+            "create table thread_users(user_key text, thread_key text, name text, "
+            "timestamp_ms integer)",
+            "create table thread_participants(thread_key text, user_key text)",
+            # User keys are ``<viewer>:<counterpart>``, which is the shape the
+            # reader needs: for ``ONE_TO_ONE:<uid>:<viewer>`` it looks for a
+            # participant key **ending in ``:<uid>``**, so ``4815162342:1`` — the
+            # obvious-looking form — finds nothing and the search falls through to
+            # the general branch and reports the wrong person.  That is what the
+            # first version of this fixture did, and the test caught it by naming
+            # a different person than expected.
+            "insert into thread_users values('1:4815162342','ONE_TO_ONE:4815162342:1',"
+            "'Rafał B',1756199100000)",
+            "insert into thread_users values('1:4815162342','ONE_TO_ONE:4815162342:1',"
+            "'',1756199100000)",
+            "insert into thread_users values('999:488887777','GROUP:a:b','Kasia',1756199100000)",
+            "insert into thread_users values('999:488887777','GROUP:a:b',NULL,1756199100000)",
+            "insert into thread_users values('1:10001','ONE_TO_ONE:10001:1',"
+            "'Bez-imienia',1756199100000)",
+            # A thread whose participants are all present and all unnamed.
+            "insert into thread_users values('1:555000','ONE_TO_ONE:555000:1',"
+            "NULL,1756199100000)",
+            "insert into thread_participants values('ONE_TO_ONE:4815162342:1',"
+            "'1:4815162342')",
+            "insert into thread_participants values('ONE_TO_ONE:4815162342:1',"
+            "'1:10001')",
+            "insert into thread_participants values('GROUP:a:b','999:488887777')",
+            "insert into thread_participants values('ONE_TO_ONE:10001:1','1:10001')",
+            "insert into thread_participants values('ONE_TO_ONE:555000:1','1:555000')",
+            "insert into threads values('ONE_TO_ONE:4815162342:1',1756199200000,NULL,1,0,"
+            "'hej',NULL,0)",
+            "insert into threads values('GROUP:a:b',1756199000000,NULL,1,0,'elo',NULL,0)",
+            "insert into threads values('ONE_TO_ONE:10001:1',1756198900000,NULL,1,0,"
+            "'anonim',NULL,0)",
+            "insert into threads values('ONE_TO_ONE:555000:1',1756198800000,NULL,1,0,"
+            "'nikt',NULL,0)",
+        ],
+    )
+
+
+@pytest.fixture
+def messenger_threads_messy_sender(tmp_path) -> Path:
+    """``messages.sender`` holding valid JSON, so the **good** join wins.
+
+    The sibling fixture leaves ``sender`` NULL so the snippet fallback fires; this
+    one gives the join something to match, so ``_senders_by_snippet`` must not run
+    at all.  Both halves of ``or _senders_by_snippet(...)`` were uncovered.
+    """
+    path = tmp_path / "threads_db_json_sender"
+    return make_sqlite(
+        path,
+        [
+            "create table threads(thread_key text primary key, timestamp_ms integer, "
+            "name text, approx_total_message_count integer, unread_message_count integer, "
+            "snippet text, snippet_sender text, is_pin integer)",
+            "create table messages(_id integer primary key, thread_key text, text text, "
+            "timestamp_ms integer, attachments text, sender text)",
+            "create table thread_users(user_key text, thread_key text, name text, "
+            "timestamp_ms integer)",
+            "insert into thread_users values('kasia:1','t1','Kasia',1756199100000)",
+            # The JSON document the join reads with json_extract($.user_key).
+            "insert into messages values(1,'t1','hej',1756199200000,NULL,"
+            "'{\"user_key\": \"kasia:1\"}')",
+            "insert into messages values(2,'t1','ok',1756199100000,NULL,"
+            "'{\"user_key\": \"kasia:1\"}')",
+            # And one whose user_key resolves to nobody, which the join drops.
+            "insert into messages values(3,'t1','nn',1756199050000,NULL,"
+            "'{\"user_key\": \"nikt:9\"}')",
+            "insert into threads values('t1',1756199200000,NULL,3,0,'hej','Kasia',0)",
+        ],
+    )
+
+
+@pytest.fixture
+def preferences_db_with_documents(tmp_path) -> Path:
+    """``prefs_db`` whose ``preferences`` rows carry JSON in a variety of shapes.
+
+    ``preferences_documents`` is not "the rows that are JSON" — it is "the rows
+    whose decoded value is a dict or a list", and the ways a row can fail that
+    differ: not a string, not JSON, JSON but a scalar, and JSON without a quote.
+    All four were uncovered.
+    """
+    import json
+
+    rows = {
+        "object": json.dumps({"k": "v", "n": 1}),
+        "array": json.dumps([1, 2, 3]),
+        "scalar": json.dumps("just a string"),
+        "number": json.dumps(42),
+        "not_json": "{definitely not json",
+        "no_quote": '{"plain": 1}',
+    }
+    statements = ["create table preferences(key text, type text, value blob)"]
+    for key, value in rows.items():
+        statements.append(
+            "insert into preferences values('%s','s','%s')"
+            % (key, value.replace("'", "''"))
+        )
+    # And a BLOB-valued row, which cannot be decoded at all.
+    statements.append("insert into preferences values('blob_row','s',x'7b7d')")
+    return make_sqlite(tmp_path / "prefs_documents", statements)
+
+
+@pytest.fixture
+def wa_msgstore_media_over_limit(tmp_path) -> Path:
+    """A message store with more media rows than ``media_limit`` allows.
+
+    The limit exists because a store on a busy device holds tens of thousands of
+    them, and the reader is a report, not an exporter.  That it is applied — and
+    that ``media_mime_kinds`` is then computed over the **cut** set rather than
+    over everything — is the question.
+    """
+    path = tmp_path / "msgstore_many_media.db"
+    # ``timestamp``, not ``timestamp_ms``: WhatsApp spells the column without the
+    # suffix and Messenger with it, and a fixture that uses the Messenger spelling
+    # fails with "no such column" on the first message aggregate.  The two schemas
+    # are nothing alike and every fixture has to say which one it is.
+    # Every column the reader's own SQL names on WhatsApp's ``messages``, taken
+    # from the function body rather than added one failure at a time.  This is the
+    # fifth column this fixture has been missing across five versions —
+    # ``attachments``, ``thread_key``, ``timestamp_ms``, then ``key_from_me`` —
+    # and each time the symptom was an unrelated-looking ``no such column`` on a
+    # different table, because the whole block is inside one ``try``.
+    statements = [
+        "create table messages(_id integer primary key, media_wa_type integer, "
+        "timestamp integer, data text, key_from_me integer, starred integer, "
+        "forwarded integer)",
+        "create table message_media(message_row_id integer, file_path text, "
+        "mime_type text, file_size integer, transferred integer)",
+    ]
+    for index in range(10):
+        statements.append(
+            "insert into messages values(%d,1,1756199200000,NULL,1,0,0)" % (index + 1)
+        )
+        statements.append(
+            "insert into message_media values(%d,'/data/media/%d.jpg','image/jpeg',"
+            "1024,1)" % (index + 1, index)
+        )
+    return make_sqlite(path, statements)
+
+
+@pytest.fixture
+def wa_sealed_crypt14() -> bytes:
+    """A crypt14 header: version in field **2**, IV in sub-field **5**.
+
+    The other version, and the two are not a parameter apart — the version field
+    and the IV sub-field number both move, so a reader that handles only one
+    recognises only one format and calls the other "not a database".
+    """
+    body = pb_string(2, pb_string(5, bytes(range(16))))
+    return bytes([len(body), 0x01]) + body + bytes(range(120))
+
+
+@pytest.fixture
+def miui_backup_record() -> bytes:
+    """MIUI cloud backup ``backup_record.xml`` — packages with child elements."""
+    return (
+        b'<?xml version="1.0" encoding="UTF-8"?>'
+        b"<records>"
+        b'<package name="com.android.chrome">'
+        b"<version>1.2.3</version>"
+        b"<lastBackup>1756199200</lastBackup>"
+        b"</package>"
+        b'<package name="com.example.app">'
+        b"<version>4.5.6</version>"
+        b"</package>"
+        b"</records>"
+    )

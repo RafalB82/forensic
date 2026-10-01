@@ -23,16 +23,16 @@ imports the parsers without executing them — and a check that fails whenever i
 is run on its own is a check that gets skipped.  A gate belongs next to the job
 that has the whole suite in front of it.
 
-Measured 2026-10-01 with 309 tests, branch coverage:
+Measured 2026-10-01 with 373 tests, branch coverage:
 
 ==================  ======  ===============================================
 part                pokrycie  what it means
 ==================  ======  ===============================================
-``core/appdata.py``    89%   Android application evidence — see below
+``core/appdata.py``    96%   Android application evidence — see below
 ``core/f2fs.py``      81%   the healthiest reader in the project
 ``core/ext4.py``      69%   the reader most of the evidence goes through
 ``core/erofs.py``     68%   EROFS, used by ``image_info`` and the self-test
-**project**          **40,57%**  the total, the least interesting number here
+**project**          **41,07%**  the total, the least interesting number here
 ``ui/curses_ui.py``    0%   needs a terminal this harness has not got
 ==================  ======  ===============================================
 
@@ -43,7 +43,7 @@ history, shared-prefs XML and protobuf blobs — all read by the module with the
 forensic surface and the least automated coverage.  It was exercised by hand and
 by ``verify`` against the reference image, and barely by pytest.
 
-It is now 89%, over four passes, because :mod:`tests.appdata_fixtures` builds
+It is now 96%, over five passes, because :mod:`tests.appdata_fixtures` builds
 **real files** on the readers' own schemas — no image, no 27 GB download, a few
 milliseconds each — and five test modules point the readers at them.  What that
 bought is not line coverage so much as the things that produce wrong conclusions
@@ -80,11 +80,19 @@ Three limitations the tests now pin rather than leave to be discovered:
 * ``found`` is redundant when a package is given, because the filter is applied
   inside ``_appstate_rows`` and ``found`` filters the already-narrowed list again.
 
-Still uncovered in ``appdata``: ``_people`` (Messenger name resolution behind the
-thread listing), ``preferences_documents``, ``_whatsapp_type_profile``'s dispute
-path, the protobuf walkers' truncation edges, ``integrity`` and
-``miui_backup_records``.  All are the same shape: a branch behind a schema
-variant or a malformed input, and each needs one more fixture.
+The remaining 4% of ``appdata`` — 38 statements and 14 partial branches — is
+concentrated in ``_whatsapp_type_profile`` (9: the disagreement path when a code's
+observed MIME falls outside its declared family, and the SQLite error arms), plus
+one or two defensive lines each in the protobuf walkers, ``shared_prefs``' XML
+error paths and several readers' ``except`` arms.  Every one of them is a branch
+behind an input this project's fixtures do not produce: a corrupted MIME join, an
+XML document that fails in a particular place, a count that raises on a schema the
+real databases do not have.
+
+That is where this stopped, and the reason is worth stating: past this point the
+tests stop describing evidence and start describing defensive code.  A fixture
+built to reach one ``except`` arm asserts that the arm does not raise, which is
+close to what the arm is for and not what the module is.
 
 Usage::
 
@@ -120,7 +128,7 @@ PARSER_FLOORS = {
 #: below that so the next reader of this file sees how far it moved and what is
 #: still uncovered.
 APPLICATION_FLOORS = {
-    "forensic/core/appdata.py": 85.0,
+    "forensic/core/appdata.py": 90.0,
 }
 
 #: Project-wide floor.  Kept equal to ``--cov-fail-under`` in the workflow; the

@@ -3,6 +3,65 @@
 Wersje narzędzia. Każda tura planu (`PLAN.md`) to jedna wersja; numery
 commitów i wyniki weryfikacji są w `PLAN.md` w sekcji „CHECKPOINTY".
 
+## 0.22.0 — `appdata` domknięte: 13% → 96%
+
+`core/appdata.py` **89% → 96%**, pokrycie całegopakietu **40,57% → 41,07%**,
+309 → **373 testy**. Podłoga podniesiona 85% → 90%.
+
+Ostatnie 38 wyrażeń i 14 częściowych gałęzi — a wszystkie to **gałęzie**, nie
+funkcje: każdy czytnik jest już wywoływany, brakowało ścieżek za drugim wariantem
+schematu albo za zepsutym wejściem.
+
+**`_people` ma trzy kształty wątku, a używany jest jeden.** Wątek jeden-do-jednego
+nie ma `name`, a czytający jest w nim uczestnikiem, więc druga strona musi być
+rozwiązana przez `thread_participants`. Fixture buduje cztery wątki — rozwiązywalny,
+nierozwiązywalny, grupowy i taki, gdzie wszyscy uczestnicy są bez nazw — bo funkcja
+z trzema gałęziami i jedną pokrytą to funkcja, której pozostałe dwie są
+zgadywanką.
+
+**Dwa wyjścia z nadawcy są połączone `or` i obie strony były niepokryte.**
+`sender` NULL → odpada ścieżka awaryjna ze snippetów; `sender` z dokumentem JSON →
+ścieżka awaryjna **nie może** się wykonać. Ramię `or`, które nigdy nie zadziałało,
+to miejsce, gdzie druga gałąź może być martwym kodem albo ścieżką powszechną, i
+testy nie potrafią powiedzieć której bez uruchomienia obu.
+
+**Spięcie `or` z `sender` JSON-em ujawniło realny błąd w moim fixture.** Czytnik
+szuka klucza kończącego się na `:<uid>` z klucza wątku, czyli klucze użytkowników
+muszą mieć postać `<viewer>:<drugi>`. Forma `4815162342:1` — która wygląda
+najnaturalniej — nie znajduje niczego, wyszukiwanie przepada do gałęzi ogólnej i
+raport podaje **inną osobę**. Test złapał to, bo oczekiwane imię różniło się od
+otrzymanego.
+
+**Piąta z rzędu brakująca kolumna w fixture.** `attachments`, potem `thread_key`,
+potem `timestamp_ms`, potem `key_from_me`. Za każdym razem objawem było
+`no such column` na **innym** fragmencie, bo cały blok jest w jednym `try` —
+brakująca kolumna wywraca ze sobą ścieżkę awaryjną i objawia się brakiem
+`top_senderów`, a nie czymś o wątkach. Kolumny wzięte raz z tekstu zapytania.
+Przy okazji: WhatsApp pisze `timestamp`, Messenger `timestamp_ms`, i te dwa schematy
+nie mają ze sobą nic wspólnego.
+
+**Dwa czytniki są niespójne między sobą w jednym module i warto to zapisać.**
+`wifi_settings` wybiera kolumny, **które istnieją**, więc szczupła tabela daje
+krótsze wiersze bez błędu. `_appstate_rows` pyta bezwarunkowo o trzynaście
+kolumn i szczupły schemat jest błędem z nazwanym brakiem. Oba zachowania
+testowane, bo różnica jest niezamierzona i nikt o niej nie wie.
+
+**Krawędzie ucięcia w spacerach protobuf** — sześć punktów cięcia, żaden nie może
+rzucić wyjątkiem, a to ta klasa, która kosztowała mnie dwa podejścia z fixture
+ANET. Podpisana zmienna długości biegnąca poza koniec zwraca to, co zdążyła
+przeczytać, a nie nic: obcięte metadane powinny dawać część czytelną.
+
+Weryfikacja regresji: zepsute porównanie odpowiednika w `_people` → 4 testy; ignorowany
+limit mediów → 1; usunięta bramka cudzysłowu w `preferences_documents` → 2;
+`_number` rzucające na liście → 1.
+
+**Dlaczego tu się zatrzymałem.** Pozostałe 4% to gałęzie za wejściami, których te
+fixture nie produkują: uszkodzone spięcie MIME, XML psujący się w konkretnym
+miejscu, `count` rzucające na schemacie, którego realne bazy nie mają. Dalej testy
+przestałyby opisywać dowód, a zaczęły opisywać kod defensywny — fixture zbudowane
+po to, żeby dosięgnąć jednego `except`, sprawdza, że ramię nie rzuci, czyli prawie
+to, po co ramię istnieje, a nie to, po czym ten moduł jest.
+
 ## 0.21.0 — kto był w rozmowie: nadawcy ze snippetów i tożsamość urządzenia
 
 `core/appdata.py` **84% → 89%**, pokrycie całego pakietu **40,24% → 40,57%**,
