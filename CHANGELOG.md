@@ -3,6 +3,71 @@
 Wersje narzędzia. Każda tura planu (`PLAN.md`) to jedna wersja; numery
 commitów i wyniki weryfikacji są w `PLAN.md` w sekcji „CHECKPOINTY".
 
+## 0.20.0 — ostatni pas testów `appdata`: z 13% do 84%
+
+`core/appdata.py` **68% → 84%**, pokrycie całego pakietu **39,09% → 40,24%**,
+242 → **286 testy**. Podłoga podniesiona 65% → 80%.
+
+Ostatnich siedem czytników bez pokrycia, wszystkie z odpowiedzią, którą raport
+stawia przed człowiekiem: książka kontaktów, magazyn P2P, log instalacji Play
+Store, historia galerii MIUI, `package-usage.list` i skanery tokenów.
+
+Rozróżnienia, których nie było testowanych:
+
+- **kontakt zapisany bez nazwy to nadal zapisany kontakt**, więc `named_contacts`
+  to inna liczba niż `contacts`
+- **poprawny magazyn P2P bez wierszy ma własne zdanie** i nie może czytać się
+  jak baza, której nie dało się otworzyć. Tabele metadanych
+  (`android_metadata`, `_shared_version`) są w obu fixture'ach **z wierszami**,
+  żeby czytnik, który by je policzył, obalił przypadek pusty
+- **log instalacji mówi, którym kontem** coś zainstalowano, a to jest nazwisko w
+  raporcie
+- **skanery tokenów** trzymają prawdziwy dostęp osobno od ciągu `EAA…` wewnątrz
+  base64, bo drugi jest zbiegiem alfabetu, a zgłoszenie go byłoby oskarżeniem
+
+**Dwa ustalenia, nie błędy testów, tylko zachowanie warte opisania:**
+
+1. **`found` jest redundantne, gdy podano pakiet.** Filtr działa **wewnątrz**
+   `_appstate_rows`, więc `apps` jest już zawężone do jednego pakietu, zanim
+   `found` filtruje je po raz drugi. Obie listy są identyczne. To napisane, nie
+   „naprawione": czytnik, który czytałby tabelę dwa razy — raz z filtrem, raz bez —
+   mógłby zgodzić się z sam sobą inaczej, gdy plik zmieni się między odczytami,
+   a raport z dwiema różnymi liczbami dla jednej bazy zaprasza pytanie, która
+   jest prawdziwa.
+2. **Szczupły schemat `appstate` to błąd z nazwanym brakującym kolumną.**
+   `_appstate_rows` ma fallback dla **jednej** kolumny (`first_download_ms`),
+   pozostałych trzynaście pyta bezwarunkowo. Zostawia to niespójność w wyjściu,
+   którą warto przypiąć: `rows` wynosi 1 — tabela istnieje i ma jeden wiersz —
+   a `apps` jest puste, bo zapytanie padło. **Obie liczby są prawdziwe** i
+   czytający, który zobaczy tylko pierwszą, uwierzy, że lista instalacji
+   została odczytana.
+
+**Siedem moich błędów**, z kodem dlaczego:
+
+| co napisałem | co jest prawdą |
+|---|---|
+| `contacts` znika przy braku tabeli | jest `-1` **i** jest `error` — czytnik mówi obie rzeczy |
+| `"x" in d is False` | łańcuch porównań, nie to co myślałem |
+| filtr zostawia `apps` nietknięte | filtr działa wewnątrz `_appstate_rows` |
+| `found` puste, `apps` nie | obie puste — filtr jednostronny |
+| szczupły `appstate` się czyta | to `error: no such column` |
+| `launches["PhotoActivity"]` | komponent z kropką: `.PhotoActivity` |
+| `uid == 10001` | `uid` jest stringiem |
+
+Ten ostatni jest najważniejszy do zapamiętania: **uid przychodzi z dokumentu
+JSON, gdzie liczba i liczba-w-tekście są dla czytnika nieodróżnialne**, więc
+stringifikacja jest właściwa. Test napisał `int`, bo tak wygląda w Pythonie.
+
+Sprawdzone, że testy łapią regresje: `tincan` liczący tabele metadanych → 2;
+dostęp tokenu bez nazwy pola uznany za prawdziwy → 1; `launches` jako liczba
+kubelków zamiast sumy → 1.
+
+**Niepokryte i następne:** `whatsapp_identity` (kontener blobów kluczy),
+`_people` (rozwiązywanie nazw w Messenger), `preferences_documents`,
+`_senders_by_snippet`, `java_serialized`, `integrity`. Dwa z nich są najważniejsze,
+bo oba produkują twierdzenia o tym, **kto był w rozmowie**: `whatsapp_identity`
+i `_senders_by_snippet`.
+
 ## 0.19.0 — testy stanu E2EE, kluczy Wi-Fi i licznika sieciowego
 
 `core/appdata.py` **49% → 68%**, pokrycie całego pakietu **37,69% → 39,09%**,

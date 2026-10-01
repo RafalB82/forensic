@@ -23,52 +23,53 @@ imports the parsers without executing them — and a check that fails whenever i
 is run on its own is a check that gets skipped.  A gate belongs next to the job
 that has the whole suite in front of it.
 
-Measured 2026-10-01 with 242 tests, branch coverage:
+Measured 2026-10-01 with 286 tests, branch coverage:
 
 ==================  ======  ===============================================
 part                pokrycie  what it means
 ==================  ======  ===============================================
 ``core/f2fs.py``      81%   the healthiest reader in the project
+``core/appdata.py``    84%   Android application evidence — see below
 ``core/ext4.py``      69%   the reader most of the evidence goes through
 ``core/erofs.py``     68%   EROFS, used by ``image_info`` and the self-test
-``core/appdata.py``    68%   Android application evidence — see below
-**project**          **39,09%**  the total, the least interesting number here
+**project**          **40,24%**  the total, the least interesting number here
 ``ui/curses_ui.py``    0%   needs a terminal this harness has not got
 ==================  ======  ===============================================
 
 ``core/appdata.py`` was at **13%** and was the largest real hole in the project:
 accounts, Chromium databases, Messenger preferences, WhatsApp stores, Wi-Fi keys,
-Signal and Messenger E2EE identity state, shared-prefs XML and protobuf blobs —
-all read by the module with the most forensic surface and the least automated
-coverage.  It was exercised by hand and by ``verify`` against the reference
-image, and barely by pytest.
+Signal and Messenger E2EE identity state, Play Store install logs, MIUI usage
+history, shared-prefs XML and protobuf blobs — all read by the module with the most
+forensic surface and the least automated coverage.  It was exercised by hand and
+by ``verify`` against the reference image, and barely by pytest.
 
-It moved to 68% because :mod:`tests.appdata_fixtures` builds **real files** on the
-readers' own schemas — no image, no 27 GB download, a few milliseconds each — and
-``tests/test_appdata_formats.py``, ``tests/test_appdata_sqlite.py`` and
-``tests/test_appdata_state.py`` point the readers at them.  What that bought is
-not line coverage so much as the things that used to be untested and are the ones
-that produce wrong conclusions about a person:
+It is now 84%, over three passes, because :mod:`tests.appdata_fixtures` builds
+**real files** on the readers' own schemas — no image, no 27 GB download, a few
+milliseconds each — and four test modules point the readers at them.  What that
+bought is not line coverage so much as the things that produce wrong conclusions
+about a person:
 
-* an uncatalogued WhatsApp type code being counted rather than dropped, and the
-  two Android columns' numberings not being interchangeable;
-* a missing table staying distinguishable from an empty one (``_count`` returns
-  ``-1`` for absent, ``0`` for empty, and both appear in the same dict);
-* a database that will not open never being reported as one with nothing in it;
-* a schema with no ``trusted`` column saying so, rather than reporting zero
-  trusted identities from a field that is not there;
+* an uncatalogued WhatsApp type code counted rather than dropped, and the two
+  Android columns' numberings kept apart;
+* a missing table (``-1``) distinguishable from an empty one (``0``), both of
+  which appear in the same ``counts`` dict;
+* a database that will not open never reported as one with nothing in it;
+* a schema with no ``trusted`` column saying so instead of reporting zero trusted
+  identities from a field that is not there;
 * Wi-Fi PSKs read with the quotes the file format left on them, and an open
   network distinguished from a lost key;
+* the P2P store's metadata tables excluded, so an empty store reads as empty;
 * an ANET counter's millisecond stamp taken from the **file name**, because the
-  container has no schema in this project and a reader that preferred a field
-  inside would be wrong more often.
+  container has no schema in this project;
+* a token in an unnamed field kept but flagged as noise, so a push payload is not
+  reported as an access token.
 
-Still uncovered in ``appdata``, and the next candidates: ``whatsapp_contacts``,
-``messenger_tincan``, ``play_localappstate`` and ``_appstate_rows``,
-``miui_gallery_history``, ``package_usage``, and the token / blob scanners
-``raw_token_hits``, ``access_tokens`` and ``varint`` callers.  Each still needs
-its own schema, and each is a schema to be got right rather than a function to be
-exercised.
+Still uncovered in ``appdata``, and the next candidates: ``whatsapp_identity``
+(the key-blob container), ``_people`` (the Messenger name resolution behind
+``messenger_threads_db``), ``preferences_documents``, ``_senders_by_snippet``,
+``java_serialized`` and ``integrity``.  ``whatsapp_identity`` and
+``_senders_by_snippet`` are the two that would matter most: both produce statements
+about who was in a conversation.
 
 Usage::
 
@@ -104,7 +105,7 @@ PARSER_FLOORS = {
 #: below that so the next reader of this file sees how far it moved and what is
 #: still uncovered.
 APPLICATION_FLOORS = {
-    "forensic/core/appdata.py": 65.0,
+    "forensic/core/appdata.py": 80.0,
 }
 
 #: Project-wide floor.  Kept equal to ``--cov-fail-under`` in the workflow; the

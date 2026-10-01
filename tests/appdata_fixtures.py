@@ -546,3 +546,158 @@ def protobuf_with_nested_strings() -> bytes:
         + varint(3 << 3) + varint(42)      # wire type 0
         + pb_string(2, nested)
     )
+
+
+# --- contacts, the P2P store, Play Store and MIUI --------------------------
+#
+# One schema each, quoted from the reader that queries it.  The four that follow
+# were the last uncovered readers with a real forensic meaning: who was in the
+# address book, whether a P2P store holds anything, what was installed and by
+# which account, and what the gallery was opened.
+
+
+@pytest.fixture
+def wa_contacts_db(tmp_path) -> Path:
+    """``wa.db`` — the WhatsApp address book.
+
+    Three rows with a name, one without: ``named_contacts`` is a different number
+    from ``contacts`` and the distinction is the whole point of the reader, since
+    a saved contact without a name is still a saved contact.
+    """
+    path = tmp_path / "wa.db"
+    return make_sqlite(
+        path,
+        [
+            "create table wa_contacts(jid text, display_name text, number text, "
+            "status integer)",
+            "insert into wa_contacts values('4815162342@s.whatsapp.net','Rafał','+4815162342',1)",
+            "insert into wa_contacts values('4999999999@s.whatsapp.net','Kasia','+48555000111',0)",
+            "insert into wa_contacts values('48777000111@s.whatsapp.net',NULL,'+48777000111',0)",
+            "insert into wa_contacts values('','','+48777000222',0)",
+        ],
+    )
+
+
+@pytest.fixture
+def tincan_empty(tmp_path) -> Path:
+    """A ``tincan_db_*`` with its tables present and no rows in any of them.
+
+    The verdict for this is a sentence of its own — a valid database with no
+    records — and it must not read as "the database could not be read".  The
+    metadata tables exist on purpose: they are skipped, and a reader that counted
+    them would say a populated store.
+    """
+    path = tmp_path / "tincan_db_empty"
+    return make_sqlite(
+        path,
+        [
+            "create table _shared_version(id integer primary key, name text, value integer)",
+            "create table android_metadata(locale text)",
+            "create table threads(identifier text, body text)",
+            "create table messages(thread_id integer, text text)",
+        ],
+    )
+
+
+@pytest.fixture
+def tincan_populated(tmp_path) -> Path:
+    """The same store with rows, so the two verdicts are distinguishable."""
+    path = tmp_path / "tincan_db_populated"
+    return make_sqlite(
+        path,
+        [
+            "create table android_metadata(locale text)",
+            "create table threads(identifier text, body text)",
+            "create table messages(thread_id integer, text text)",
+            "insert into android_metadata values('pl_PL')",
+            "insert into threads values('t1','pierszy watek')",
+            "insert into messages values(1,'czesc wiadomosci')",
+        ],
+    )
+
+
+@pytest.fixture
+def play_localappstate_db(tmp_path) -> Path:
+    """Play Store ``localappstate.db`` — installs with the account that made them.
+
+    Two accounts and two calendar years, because ``by_year`` is derived from the
+    first-download date and an account is a name that appears in a report.  One row
+    has a NULL referrer, because ``referrer`` is sliced and defaulted and an
+    unconditional slice on ``None`` would raise.
+    """
+    path = tmp_path / "localappstate.db"
+    return make_sqlite(
+        path,
+        [
+            """create table appstate(package_name text, title text,
+                 first_download_ms integer, last_update_timestamp_ms integer,
+                 delivery_data_timestamp_ms integer, last_notified_version text,
+                 desired_version text, account text, referrer text,
+                 installer_state integer, install_request_timestamp_ms integer,
+                 external_referrer_timestamp_ms integer, delivery_token blob)""",
+            "insert into appstate values('com.android.chrome','Chrome',"
+            "1420070400000,1756199200000,1420070400000,'1.2.3','1.2.3',"
+            "'rafal@example.com','https://play.google.com',1,1420070400000,"
+            "1420070400000,x'0102')",
+            "insert into appstate values('com.example.app','Przykład',"
+            "1693084800000,1693084800000,1693084800000,'1.0','1.0',"
+            "'inny@example.com',NULL,0,1693084800000,NULL,NULL)",
+        ],
+    )
+
+
+@pytest.fixture
+def package_usage_list() -> bytes:
+    """``/system/package-usage.list`` — package and last-use stamp, one per line.
+
+    Carries a line with the wrong field count, a line with a non-numeric stamp and
+    a blank line, because all three are in real copies of this file and all three
+    are skipped rather than raising.
+    """
+    return (
+        b"com.android.chrome 1756199200000\n"
+        b"com.android.settings 1756199100000\n"
+        b"\n"
+        b"com.example.tylko-jedno-pole\n"
+        b"com.example.nienumeryczny nie-liczba\n"
+        b"com.android.contacts 0\n"
+    )
+
+
+@pytest.fixture
+def miui_gallery_history() -> bytes:
+    """MIUI gallery usage history — a JSON list of per-component launch counters.
+
+    Carries an entry whose ``history`` is not a dictionary, because the reader
+    guards that and a crash on one row would cost the whole file.
+    """
+    import json
+
+    return json.dumps(
+        [
+            {
+                "package": "com.miui.gallery",
+                "component": "com.miui.gallery/.PhotoActivity",
+                "recent": 1756199200000,
+                "history": {"1756199100000": 3, "1756199200000": 5},
+            },
+            {
+                "package": "com.miui.gallery",
+                "component": "com.miui.gallery/.EditorActivity",
+                "recent": 1756198000000,
+                "history": {"1756197000000": 1},
+            },
+            {
+                "package": "com.example.other",
+                "component": "com.example.other/.Main",
+                "recent": 1756190000000,
+                "history": {},
+            },
+            {
+                "package": "com.miui.gallery",
+                "component": "com.miui.gallery/.Broken",
+                "recent": 1756180000000,
+                "history": "nie slownik",
+            },
+        ]
+    ).encode("utf-8")
