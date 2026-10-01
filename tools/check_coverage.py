@@ -33,7 +33,7 @@ part                pokrycie  what it means
 ``core/ext4.py``        69%   the reader most of the evidence goes through
 ``core/erofs.py``      86%   EROFS — Android 10 and later
 **project**          **41,68%**  the total, the least interesting number here
-``ui/curses_ui.py``    0%   needs a terminal this harness has not got
+``ui/curses_ui.py``    0%   **no floor on purpose** — see the known gap below
 ==================  ======  ===============================================
 
 ``core/appdata.py`` was at **13%** and was the largest real hole in the project:
@@ -79,6 +79,32 @@ Three limitations the tests now pin rather than leave to be discovered:
   only the first believes the install list was read.
 * ``found`` is redundant when a package is given, because the filter is applied
   inside ``_appstate_rows`` and ``found`` filters the already-narrowed list again.
+
+KNOWN GAP — ``forensic/ui/curses_ui.py`` at 0%, deliberately without a floor
+------------------------------------------------------------------------------
+
+This is the one place in the project where nothing is exercised, and it is left
+that way deliberately rather than by oversight.  ``curses_ui`` is 280 lines of
+screen layout: boxes, key bindings, scrolling, a field editor.  Reaching it needs
+a terminal, and pytest does not have one — ``curses`` requires a real ``tty``, and a
+monkeypatched ``addstr`` would test that the calls happen, not that the screen
+comes out right.
+
+Two ways to close it, both with a real cost:
+
+* a pseudo-terminal — ``pty.openpty()``, feed key events through the fd, capture
+  the panel — which is the honest one, and which is roughly the size of one of the
+  parser modules;
+* driving ``MenuUI`` in-process, which tests the actions but not the drawing.
+
+Neither is cheap, and until one is written a floor here would be a number nobody
+believes.  What a floor *would* buy is a regression signal on code that is
+otherwise unwatched, so the trade is deliberate and the decision belongs to
+whoever picks this up next, not to a number typed here.
+
+The other zero in this table is ``tools/``, excluded on purpose: it is CI
+scaffolding with no forensic logic in it, and counting it would move the total for
+reasons that have nothing to do with the code being examined.
 
 The remaining 4% of ``appdata`` — 38 statements and 14 partial branches — is
 concentrated in ``_whatsapp_type_profile`` (9: the disagreement path when a code's

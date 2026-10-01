@@ -3,6 +3,45 @@
 Wersje narzędzia. Każda tura planu (`PLAN.md`) to jedna wersja; numery
 commitów i wyniki weryfikacji są w `PLAN.md` w sekcji „CHECKPOINTY".
 
+## 0.25.0 — zamknięcie serii: UI odłożone świadomie, z zapisem
+
+Stan na koniec serii pokryciowej, na obrazie referencyjnym 27 GB:
+
+| moduł | pokrycie | podłoga | skąd |
+|---|---|---|---|
+| `core/appdata.py` | 95,7% | 90 | 13% na początku serii |
+| `core/erofs.py` | 86,4% | 80 | pokrycie z samotestu, **nie z pytest** |
+| `core/f2fs.py` | 84,7% | 78 | pokrycie z samotestu, **nie z pytest** |
+| `core/ext4.py` | 69,0% | 60 | adversarial + sumy metadanych |
+| `ui/curses_ui.py` | **0%** | **brak, świadomie** | patrz niżej |
+
+**428 testów** (z 73 na początku), pokrycie pakietu **41,68%**, `mypy` 62 błędy
+= baseline, samotest 8/8 z korpusem 10 uszkodzonych obrazów, `verify` na obrazie
+27 GB bez zmian: 31/33 i 722 asercje.
+
+**Wszystkie trzy czytniki filesystemów mają teraz pokrycie z przebiegu, który CI
+faktycznie wykonuje.** EROFS i F2FS miały podłogi spełnione wyłącznie dzięki
+`ext4_selftest`, czyli modułowi uruchamianemu ręcznie — `pytest tests/` patrzył na
+nie **dokładnie nigdy**, a raport pokrycia stawiał je wśród najlepiej
+przetestowanych czytników w projekcie. To najbardziej podstępna klasa błędu w tym
+repozytorium: metryka opisująca przebieg, którego nikt nie wykonuje.
+
+**`ui/curses_ui.py` zostaje na 0% i świadomie bez podłogi.** 280 linii układu
+ekranu: ramki, przypisania klawiszy, przewijanie, edytor pól. Dotrzeć do tego
+wymaga terminala, którego pytest nie ma — `curses` potrzebuje prawdziwego `tty`,
+a podstawiony `addstr` sprawdziłby, że wywołania się dzieją, a nie że ekran
+wychodzi poprawnie.
+
+Są dwie drogi zamknięcia i obie kosztują: pseudo-terminal
+(`pty.openpty()`, zdarzenia klawiszy przez fd, zrzut panelu) — ta uczciwa, i
+mniej więcej wielkości jednego z modułów parserów; albo `MenuUI` w procesie, co
+testuje akcje, ale nie rysowanie. Podłoga dałaby sygnał regresji na kodzie, który
+dziś jest bez obserwacji, więc decyzja jest świadoma — i należy do tego, kto to
+podejmie, a nie do liczby wpisanej tutaj.
+
+Zapisane w `tools/check_coverage.py` przy tej tabeli, nie tylko w tym wpisie,
+bo to plik czytany przy każdym uruchomieniu bramki.
+
 ## 0.24.0 — F2FS pod pytest: druga z dwóch podłóg, które kłamały
 
 `core/f2fs.py` **81% → 85%**, pokrycie całego pakietu **41,48% → 41,68%**,
