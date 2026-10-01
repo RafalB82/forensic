@@ -3,6 +3,60 @@
 Wersje narzędzia. Każda tura planu (`PLAN.md`) to jedna wersja; numery
 commitów i wyniki weryfikacji są w `PLAN.md` w sekcji „CHECKPOINTY".
 
+## 0.24.0 — F2FS pod pytest: druga z dwóch podłóg, które kłamały
+
+`core/f2fs.py` **81% → 85%**, pokrycie całego pakietu **41,48% → 41,68%**,
+404 → **428 testy**. Podłoga podniesiona 70% → 78%. `f2fs-tools` w CI, obie joby.
+
+Ten sam problem co EROFS, tylko cicho: `f2fs.py` siedział na 81% przy podłodze 70%
+i **każda linia tego pokrycia pochodziła z `ext4_selftest`** — modułu uruchamianego
+ręcznie. `pytest tests/` patrzył na F2FS dokładnie nigdy. Dwie podłogi kłamały
+jednocześnie; obie naprawione.
+
+**Fixture 5 MiB, a 14 z 15 testów się pominęło — co w podsumowaniu wygląda
+dokładnie jak sukces.** `mkfs.f2fs` odrzuca mniejszy wolumen komunikatem *„Device
+size is not sufficient for F2FS volume"*. Użyłem 5 MiB, bo tyle przyjmuje EROFS.
+Minimum to 64 MiB i tyle buduje samotest.
+
+**Oracle to `dump.f2fs -d 1`, nie `dump.f2fs`.** Bez poziomu debugu narzędzie
+drukuje linie `Info:` zamiast pól, więc parser napisany pod kształt
+`dumpe2fs -h` nie znajduje nic — i porównał zero pól, raportując to jako zgodność.
+Pole ma kształt `nazwa [0x HEX : DEC]`, stąd regex.
+
+**`dump.f2fs -i` odpowiada kodem błędu, bo oferuje zapisanie pliku do
+`./lost_found`.** To prompt, nie awaria, i pola wypisane przed nim są dobre.
+Pomijanie na kodzie wyjścia zgubiło tę porównanie raz już w samoteście; teraz
+warunek to „nie wypisał żadnego pola".
+
+**Moja własna asercja łgała w teście, który napisałem właśnie po to, żeby
+łapać tę klasę błędu.** Porównywałem zbiór nazw ze zbiorem oczekiwanym i
+napisałem w docstringu, że to łapie czytnika zwracającego każdą nazwę dwa razy.
+**Nie łapie** — porównanie zbiorów odrzuca duplikaty. Wstrzyknąłem dokładnie tę
+regresję i suita została zielona. Teraz obie połowy osobno: zbiór mówi, że
+właściwe nazwy są, liczba mówi, że każda jest raz.
+
+**Dwa testy, których nie miałem, a których potrzebowałem** — oba odsyłające regresje,
+które **nie zostały złapane** przez resztę pliku:
+
+- obraz ucięty o pół bloku: `fs.blocks` liczy się z superbloka i nie zmienia przy
+  skróceniu pliku, więc ostatni zadeklarowany blok jest teraz tylko częściowo
+  obecny. Czytnik musi to powiedzieć, nie dopełnić zerami — to jest F2FS-owa
+  połowa defektu, który ext4 miał przez całą turę.
+- uszkodzony blok dnode'a katalogu: `walk_errors` niezerowe i `names_complete`
+  **fałszywe**. Bez tego testu czytnik, który zgłaszałby `names_complete: True`
+  przy błędach chodzenia, przeszedłby cały ten plik, bo na czystym obrazie obie
+  gałęzie się zgadzają.
+
+Testy (24): geometria pole po polu wobec `dump.f2fs`, drzewo **bez duplikatów**,
+katalog zagnieżdżony, treść bajt w bajt, dowiązanie, `resolve` i jego odmowy,
+inode wobec `dump.f2fs -i`, węzeł i blok poza obrazem, obraz nie-F2FS, obraz
+ucięty na superbloku, `coverage()` na czystym obrazie, `feature_names`, tryby,
+stat, menedżer kontekstu — plus dwa strażniki powyżej.
+
+Weryfikacja regresji: krótki blok dopełniany zerami → 1; `names_complete` zawsze
+`True` → 1; duplikaty w `listdir` → 1 (dopiero po naprawieniu asercji);
+krok geometrii przesunięty → 1.
+
 ## 0.23.0 — EROFS pod pytest: pokrycie, które opisywało przebieg, którego nikt nie wykonuje
 
 `core/erofs.py` **68% → 86%**, pokrycie całego pakietu **41,07% → 41,48%**,

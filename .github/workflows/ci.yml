@@ -34,7 +34,7 @@ jobs:
       - name: Install filesystem tools
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y e2fsprogs erofs-utils
+          sudo apt-get install --no-install-recommends -y e2fsprogs erofs-utils f2fs-tools
 
       - name: Install pytest
         run: python -m pip install --upgrade pip && python -m pip install pytest
@@ -43,7 +43,7 @@ jobs:
       # installed above as a hard dependency, and a test that quietly skips when
       # the tool is absent is the failure mode this job exists to rule out.
       - name: Filesystem, truncated and corrupted-image tests
-        run: python -m pytest -q -rs tests/test_truncated_evidence.py tests/test_sparse_holes.py tests/test_metadata_csum.py tests/test_wrong_filesystem.py tests/test_ext4_selftest.py tests/test_erofs.py
+        run: python -m pytest -q -rs tests/test_truncated_evidence.py tests/test_sparse_holes.py tests/test_metadata_csum.py tests/test_wrong_filesystem.py tests/test_ext4_selftest.py tests/test_erofs.py tests/test_f2fs.py
 
       # The same self-test, but through the CLI — registry, controller, findings
       # and the export — which pytest does not reach because it calls the
@@ -106,7 +106,7 @@ jobs:
       - name: Install filesystem tools
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y e2fsprogs erofs-utils
+          sudo apt-get install --no-install-recommends -y e2fsprogs erofs-utils f2fs-tools
 
       - name: Install linters, pytest and coverage
         run: |
