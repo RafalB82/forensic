@@ -701,3 +701,126 @@ def miui_gallery_history() -> bytes:
             },
         ]
     ).encode("utf-8")
+
+
+# --- who was in the conversation --------------------------------------------
+#
+# The two readers below produce statements about **who**, which is why they are
+# worth a fixture of their own rather than being folded into the threads fixture.
+# One resolves a name from a snippet index; the other reads the numbers out of a
+# Java-serialised blob and composes an identifier from them.
+
+
+@pytest.fixture
+def messenger_threads_with_snippets(tmp_path) -> Path:
+    """Messenger ``threads_db2`` where the only sender signal is the snippet.
+
+    :func:`forensic.core.appdata.messenger_threads_db` prefers a join of
+    ``messages.sender`` (a JSON document) against ``thread_users``.  This fixture
+    has every table that join needs and the join still returns nothing, because
+    ``sender`` is NULL — which is what a store looks like when the message rows
+    kept their bodies and lost their authors.  The fallback reads
+    ``threads.snippet_sender`` instead, and that is the path this exercises.
+
+    Two senders, one more talkative than the other, so the ordering is observable,
+    plus threads whose snippet sender is NULL and empty, so the exclusion is.
+
+    **Every column is taken from the reader's own SQL, not guessed.**  Three
+    versions of this fixture declared a subset of ``threads`` and each one failed
+    with ``no such column`` — and because the whole block is inside one
+    ``try``, a missing column takes the sender fallback down with it, so the
+    symptom was ``top_senders`` missing rather than anything about threads.
+    Written once from the query text instead of three times from a failure.
+    """
+    path = tmp_path / "threads_db_snippets"
+    return make_sqlite(
+        path,
+        [
+            # Columns the reader selects from threads:
+            "create table threads(thread_key text primary key, timestamp_ms integer, "
+            "name text, approx_total_message_count integer, unread_message_count integer, "
+            "snippet text, snippet_sender text, is_pin integer)",
+            # Columns the reader selects from messages.
+            "create table messages(_id integer primary key, thread_key text, "
+            "text text, timestamp_ms integer, attachments text, sender text)",
+            # Columns the reader selects from thread_users.
+            "create table thread_users(user_key text, thread_key text, name text, "
+            "timestamp_ms integer)",
+            "insert into threads values('t1',1756199200000,NULL,2,0,'hej','Kasia',0)",
+            "insert into threads values('t2',1756199100000,NULL,1,0,'ok','Kasia',0)",
+            "insert into threads values('t3',1756199000000,'Nazwa wątku',1,0,'cześć','Rafał B',0)",
+            "insert into threads values('t4',1756198900000,NULL,1,0,'anonim',NULL,0)",
+            "insert into threads values('t5',1756198800000,NULL,1,0,'pusty','',0)",
+            # sender is NULL: the JSON join has nothing to match on.
+            "insert into messages values(1,'t1','hej',1756199200000,NULL,NULL)",
+            "insert into thread_users values('kasia:1','t1','Kasia',1756199100000)",
+        ],
+    )
+
+
+def _java_me() -> bytes:
+    """The bytes of a ``com.whatsapp.files/me`` stream, built from the reader's claims.
+
+    A plain function and not a fixture, because ``java_me_blob_with_jid`` needs the
+    same bytes plus one literal.  Calling a fixture from another fixture is the
+    third time this session that produced
+    ``'FixtureFunctionDefinition' object has no attribute …`` — the first was
+    ``messenger_msys`` shadowing the reader of the same name, and the second was
+    this.  Both are pytest's fault for making a decorated function still look
+    callable.
+
+    The digit runs are separated by non-digit bytes on purpose.
+    :data:`forensic.core.appdata.DIGITS_RE` requires digits that are not adjacent
+    to other digits, so ``48`` written next to ``48515162342`` would be one run of
+    thirteen and the country code would be lost.
+    """
+    return (
+        b"\xac\xed\x00\x05"
+        b"\x74\x00\x0f"                       # TC_STRING, length 15
+        b"com.whatsapp.Me\x00"
+        b"\x70"                                 # TC_OBJECT
+        b"[Lcom/whatsapp/Profile;Ljava/lang/String;"
+        + b"\x05" + b"48"                      # country code, as a length-prefixed int
+        + b"\x78\x2a" + b"48515162342"        # TC_LONG, the e164 value
+        + b"\x78\x26" + b"481516234"          # TC_LONG, the national value
+        + b"\x00\x00"                          # padding
+    )
+
+
+@pytest.fixture
+def java_me_blob() -> bytes:
+    """A ``com.whatsapp.files/me`` stream: Java header, type descriptor, three numbers.
+
+    The reader's claim is specific and the fixture is built to match it: the stream
+    stores a country code, an e164 number and a national number, and **not** the
+    Jabber ID, so the identifier in the output is composed from the e164 value.
+    """
+    return _java_me()
+
+
+@pytest.fixture
+def java_me_blob_with_jid() -> bytes:
+    """The same stream, but carrying a fully-qualified Jabber ID.
+
+    The reader has two paths and they are not equivalent: a JID found in the blob
+    is **read**, while one composed from a number is **derived**, and the output
+    says which with ``jabber_id_derived``.  A reader that reported both as read
+    would be claiming the identifier came from the file when it did not.
+    """
+    return _java_me() + b"\x74\x00\x17" + b"48615162342@s.whatsapp.net" + b"\x00"
+
+
+@pytest.fixture
+def java_blob_without_numbers() -> bytes:
+    """A Java stream with no digit runs at all.
+
+    The composed identifier has nothing to compose from, and the output must say
+    so rather than guessing a country code from the type name.
+    """
+    return (
+        b"\xac\xed\x00\x05"
+        b"\x74\x00\x0f"
+        b"com.whatsapp.Me\x00"
+        b"\x74\x00\x08"
+        b"nieznane\x00"
+    )

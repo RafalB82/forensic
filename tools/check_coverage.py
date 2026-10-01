@@ -23,16 +23,16 @@ imports the parsers without executing them — and a check that fails whenever i
 is run on its own is a check that gets skipped.  A gate belongs next to the job
 that has the whole suite in front of it.
 
-Measured 2026-10-01 with 286 tests, branch coverage:
+Measured 2026-10-01 with 309 tests, branch coverage:
 
 ==================  ======  ===============================================
 part                pokrycie  what it means
 ==================  ======  ===============================================
+``core/appdata.py``    89%   Android application evidence — see below
 ``core/f2fs.py``      81%   the healthiest reader in the project
-``core/appdata.py``    84%   Android application evidence — see below
 ``core/ext4.py``      69%   the reader most of the evidence goes through
 ``core/erofs.py``     68%   EROFS, used by ``image_info`` and the self-test
-**project**          **40,24%**  the total, the least interesting number here
+**project**          **40,57%**  the total, the least interesting number here
 ``ui/curses_ui.py``    0%   needs a terminal this harness has not got
 ==================  ======  ===============================================
 
@@ -43,9 +43,9 @@ history, shared-prefs XML and protobuf blobs — all read by the module with the
 forensic surface and the least automated coverage.  It was exercised by hand and
 by ``verify`` against the reference image, and barely by pytest.
 
-It is now 84%, over three passes, because :mod:`tests.appdata_fixtures` builds
+It is now 89%, over four passes, because :mod:`tests.appdata_fixtures` builds
 **real files** on the readers' own schemas — no image, no 27 GB download, a few
-milliseconds each — and four test modules point the readers at them.  What that
+milliseconds each — and five test modules point the readers at them.  What that
 bought is not line coverage so much as the things that produce wrong conclusions
 about a person:
 
@@ -59,17 +59,32 @@ about a person:
 * Wi-Fi PSKs read with the quotes the file format left on them, and an open
   network distinguished from a lost key;
 * the P2P store's metadata tables excluded, so an empty store reads as empty;
-* an ANET counter's millisecond stamp taken from the **file name**, because the
-  container has no schema in this project;
+* a sender name recovered from the snippet index when the JSON join has nothing,
+  and ``named_by`` saying which source supplied it;
+* a composed Jabber ID marked **derived**, so a rule about Polish numbers is not
+  read as an identifier that came out of the file;
 * a token in an unnamed field kept but flagged as noise, so a push payload is not
   reported as an access token.
 
-Still uncovered in ``appdata``, and the next candidates: ``whatsapp_identity``
-(the key-blob container), ``_people`` (the Messenger name resolution behind
-``messenger_threads_db``), ``preferences_documents``, ``_senders_by_snippet``,
-``java_serialized`` and ``integrity``.  ``whatsapp_identity`` and
-``_senders_by_snippet`` are the two that would matter most: both produce statements
-about who was in a conversation.
+Three limitations the tests now pin rather than leave to be discovered:
+
+* the e164 candidate is selected with a hardcoded ``startswith("48")`` — the
+  Polish country code, matching the reference device.  On any other country's
+  number the reader reports the digits and stops, which is arguably right (a
+  country code derived from a person's number is an inference, and a silent one
+  is worse than none) but leaves the output indistinguishable from "the file held
+  no numbers".
+* a lean ``appstate`` schema is an error naming the missing column, and it leaves
+  ``rows`` at 1 while ``apps`` is empty — both numbers true, and a reader who sees
+  only the first believes the install list was read.
+* ``found`` is redundant when a package is given, because the filter is applied
+  inside ``_appstate_rows`` and ``found`` filters the already-narrowed list again.
+
+Still uncovered in ``appdata``: ``_people`` (Messenger name resolution behind the
+thread listing), ``preferences_documents``, ``_whatsapp_type_profile``'s dispute
+path, the protobuf walkers' truncation edges, ``integrity`` and
+``miui_backup_records``.  All are the same shape: a branch behind a schema
+variant or a malformed input, and each needs one more fixture.
 
 Usage::
 
@@ -105,7 +120,7 @@ PARSER_FLOORS = {
 #: below that so the next reader of this file sees how far it moved and what is
 #: still uncovered.
 APPLICATION_FLOORS = {
-    "forensic/core/appdata.py": 80.0,
+    "forensic/core/appdata.py": 85.0,
 }
 
 #: Project-wide floor.  Kept equal to ``--cov-fail-under`` in the workflow; the

@@ -3,6 +3,63 @@
 Wersje narzędzia. Każda tura planu (`PLAN.md`) to jedna wersja; numery
 commitów i wyniki weryfikacji są w `PLAN.md` w sekcji „CHECKPOINTY".
 
+## 0.21.0 — kto był w rozmowie: nadawcy ze snippetów i tożsamość urządzenia
+
+`core/appdata.py` **84% → 89%**, pokrycie całego pakietu **40,24% → 40,57%**,
+286 → **309 testy**. Podłoga podniesiona 80% → 85%.
+
+Ostatnich dwóch czytników bez pokrycia, i oba produkują twierdzenia o
+**człowieku** — nie o pliku. Raport, który podaje złego nadawcę albo wypisuje
+złożony identyfikator jako odczytany, to nie problem formatowania.
+
+**Ścieżka ze snippetów jest awaryjna i odpala się dokładnie wtedy, gdy dobra nie
+może.** `messenger_threads_db` woli złączenie `messages.sender` (dokument JSON) z
+`thread_users`. Fixture ma **wszystkie tabele, których to złączenie potrzebuje**,
+a złączenie i tak zwraca pustkę, bo `sender` jest NULL — tak wygląda magazyn,
+gdy wiersze wiadomości zachowały treść, a autorów nie. Wtedy czyta
+`threads.snippet_sender`.
+
+**Złożony identyfikator to nie identyfikator odczytany.** `com.whatsapp.files/me`
+przechowuje kod kraju, numer e164 i numer krajowy — a **nie** Jabber ID. Więc
+`48515162342@s.whatsapp.net` jest **złożony** z cyfr, i czytnik mówi to
+jednym booleanem (`jabber_id_derived`). Oba warianty przetestowane, bo różnica
+między nimi jest całą sprawą: jeden wyszedł z pliku, drugi z reguły o numerach
+polskich.
+
+**Ograniczenie, które teraz jest zmierzone, a nie odkryte:** kandydat na e164 jest
+wybierany **twardym `startswith("48")`** — polskim kodem kraju, bo obraz
+referencyjny jest polski. Przy numerze z innego kraju czytnik podaje cyfry i
+kończy, nie podając `e164`, `country_code` ani złożonego `jabber_id`. To
+prawdopodobnie właściwy kompromis — kod kraju wyprowadzony z numeru osoby to
+wnioskowanie, a ciche wnioskowanie jest gorsze niż brak — ale **wynik wygląda
+identycznie jak „plik nie zawierał numerów"**, i tego nie da się odróżnić bez
+czytania testu.
+
+**Fixture zgadywałem trzy razy, zanim przeczytałem SQL czytnika.** Kolejne
+wersje deklarowały podzbiór kolumn i za każdym razem padały z `no such column` —
+a ponieważ cały blok jest w jednym `try`, brakująca kolumna **wywracała ze sobą
+ścieżkę awaryjną**, więc objawem było brak `top_senders`, a nie cokolwiek o
+wątkach. Kolumny wzięte raz z tekstu zapytania, nie z trzech porażek.
+
+**Dwa razy moje podstawienia tekstu nie zadziałały i wyglądało, jakby testy nie
+łapały regresji.** `jabber_id_derived` jest ustawiane przez `setdefault`, a nie
+przypisaniem, i ciąg SQL jest podzielony na linie inaczej, niż zakładałem. Oba
+przypadki wyglądały dokładnie tak jak luka w pokryciu — czyli **brak testu
+wygląda jak brak testu**. Po poprawieniu podstawień: dopuszczenie pustego
+`snippet_sender` → 2 testy padają, `jabber_id_derived` zawsze `False` → 1,
+nazwa wysyłającego bez obcięcia → 1.
+
+**Trzeci raz w tej sesji fixture przesłania funkcję** (`java_me_blob_with_jid`
+wołał `java_me_blob`), po `messenger_msys` i po `fb_properties_store`. Każdy raz
+`FixtureFunctionDefinition object has no attribute`. Wydzielone do `_java_me()`,
+zwykłej funkcji bez dekoratora.
+
+Nadal niepokryte w `appdata`: `_people` (rozwiązywanie nazw w Messenger),
+`preferences_documents`, ścieżka sporu w `_whatsapp_type_profile`, krawędzie
+ucięcia w spacerach protobuf, `integrity`, `miui_backup_records`. Wszystkie mają
+ten sam kształt: gałąź za wariantem schematu albo za uszkodzonym wejściem, i
+każda potrzebuje jednego fixture'a więcej.
+
 ## 0.20.0 — ostatni pas testów `appdata`: z 13% do 84%
 
 `core/appdata.py` **68% → 84%**, pokrycie całego pakietu **39,09% → 40,24%**,
