@@ -3,6 +3,71 @@
 Wersje narzędzia. Każda tura planu (`PLAN.md`) to jedna wersja; numery
 commitów i wyniki weryfikacji są w `PLAN.md` w sekcji „CHECKPOINTY".
 
+## 0.17.0 — CI: pokrycie i podłogi, które da się zaufać
+
+**Bramka `grep` w samoteście, którą napisałem dzień wcześniej, była zła i
+działała złym sposobem.** Krok w `.github/workflows/ci.yml` szukał w
+wyrenderowanej tabeli `silent: 0` i `unexpected: []`. W rzeczywistości `silent`
+wypisuje się jako `[]`, a nie `0` — i to nie jest literówka, to inny typ w
+`res.data`. Wzorzec przestałby pasować przy każdej zmianie szerokości kolumny,
+czyli dokładnie wtedy, gdy ktoś go nie zauważy. Teraz asercja czyta **eksport
+JSON**: strukturalnie, bez wrażliwości na formatowanie, i obejmuje też wyniki
+zestawu uszkodzonych obrazów, których tam wcześniej nie było.
+
+Sprawdzone w obie strony: zaszumiony `corruption.wrong` → `exit=1`, czyste
+wyjście → `exit=0`.
+
+**Dwa joby, nie jeden.** `parsers` uruchamia sam test parserów, uciętych i
+uszkodzonych obrazów — 53 testy, tylko `e2fsprogs` — bo czerwony krzyż w jobie
+ogólnym przy wciąż zielonych parserach jest sygnałem, którego chce się czytać
+ dalej. `test` to reszta.
+
+**`tools/check_type_regressions.py` — mypy może spadać, nie może rosnąć.**
+Repo jest w 40% otypowane i droga z 62 błędów do zera musi przetrwać każdy commit
+po drodze. `mypy forensic` blocking dziś znaczyłoby albo blokowanie wszystkiego,
+albo blokowanie na 62 błędach, których nikt nie spłaci w jednym commicie — więc
+CI raportuje liczbę, a ten skrypt decyduje, czy się ruszyła. **Per pakiet**, nie
+jedna suma: suma zadowala się przypadkiem, bo usunięcie adnotacji w czystym
+pliku i dodanie gorszego gdzie indziej zostawia sumę identyczną i zamienia
+znane miejsce na nieznane.
+
+Sprawdzone w obie strony: wstrzyknięty błąd w `core/session.py` → `exit=1`,
+`core 0 → 1` widoczne osobno; po przywróceniu → `exit=0`.
+
+**Pokrycie: 35,13% z włączonym branch.** Podłoga 35, nie 40 — podłoga ustawiona
+na zaokrąglonej w górę liczbie **nie przechodzi na czystym drzewie**, a bramka,
+która nie przechodzi zanim ktokolwiek dotknął kodu, to bramka, której się nie
+ufa. Branch, nie instrukcje, bo w tym repo wady, które się zdarzyły, to gałęzie
+niewykonane lub źle wykonane: krótki odczyt dopełniany zerami zamiast wyjątku,
+`if v`, które niczego nie odfiltrowywało bo `-1` jest prawdziwe, i `get(key, 0)`,
+którego domyślna wartość robiła raportowanie. Żadna z nich nie zmniejsza licznika
+instrukcji.
+
+**Podłogi per czytnik** (`tools/check_coverage.py`), bo jedna suma jest
+zadowalająca przypadkiem: ext4 69%, f2fs 81%, erofs 68% — podłogi 60/70/55.
+Skrypt sprawdza też, że podłoga w `ci.yml` zgadza się z podłogą w nim samym,
+bo rozjeżdżające się stałe w dwóch plikach to dokładnie ten rodzaj bramki, który
+przestaje działać po cichu.
+
+W `tools/`, nie w `tests/`. Jako pliki testowe podłogi dawały 0% przy każdym
+niepełnym przebiegu — `pytest tests/test_coverage_floor.py` importuje czytniki
+bez ich wykonania — a bramka, która nie przechodzi przy własnym uruchomieniu, jest
+bramką, którą się pomija.
+
+## Największa dziura, zapisana wprost
+
+`forensic/core/appdata.py` — **13%**. To tam czyta się dowody aplikacji: konta,
+bazy Chromium, preferencje Messengera, magazyny WhatsAppa, shared-prefs XML,
+bloby protobufowe. **Największa powierzchnia sądowa w projekcie i najmniejsze
+pokrycie automatyczne.** W praktyce ćwiczony przez `verify` na obrazie
+referencyjnym i ręcznie, przez pytest — w trzynastej części.
+
+To nie jest wezwanie do napisania 700 testów naraz. To jest wskazanie kierunku:
+`tests/test_appdata.py` budujący prawdziwe bazy na żywo, w stylu
+`tests/test_metadata_csum.py`, ruszyłby liczbę, która w tym repo znaczy więcej niż
+każda inna — bo `appdata` jest miejscem, gdzie zła odpowiedź zamienia się w zły
+wniosek o człowieku.
+
 ## 0.16.0 — sumy kontrolne metadanych: superblock, bitmapy, inody
 
 **Obraz referencyjny nie ma `metadata_csum`.** Redmi 3 z 2016, ext4 bez tej

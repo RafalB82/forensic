@@ -10,6 +10,81 @@ permissions:
   contents: read
 
 jobs:
+  # The filesystem parsers.  Split from the rest because they are the part that
+  # runs against images this repository builds itself — truncated, sparse and
+  # byte-corrupted — and because a red X in the general job while the parsers
+  # keep passing is exactly the signal you want to keep reading.  These tests
+  # need e2fsprogs and nothing else; they are the ones that must never stop
+  # running, because a filesystem test that skips silently is a test that has
+  # stopped testing.
+  parsers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install e2fsprogs
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y e2fsprogs
+
+      - name: Install pytest
+        run: python -m pip install --upgrade pip && python -m pip install pytest
+
+      # Skip-only-if-missing is not allowed here on purpose: e2fsprogs is
+      # installed above as a hard dependency, and a test that quietly skips when
+      # the tool is absent is the failure mode this job exists to rule out.
+      - name: Filesystem, truncated and corrupted-image tests
+        run: python -m pytest -q -rs tests/test_truncated_evidence.py tests/test_sparse_holes.py tests/test_metadata_csum.py tests/test_wrong_filesystem.py tests/test_ext4_selftest.py
+
+      # The same self-test, but through the CLI — registry, controller, findings
+      # and the export — which pytest does not reach because it calls the
+      # function directly.  Two things are checked that only this path can show:
+      # the export exists and is parseable, and the corruption results survived
+      # the trip.
+      #
+      # Asserted against the JSON export, not the rendered table.  An earlier
+      # version of this step grepped the terminal output for `silent: 0`, and the
+      # pattern stopped matching the moment a column width changed — which is the
+      # whole failure mode this repository keeps running into: a check that looks
+      # like it is watching something and is not.
+      - name: Self-test through the CLI must export a clean result
+        run: |
+          set -o pipefail
+          python forensic.py --cli ext4_selftest
+          export_json=$(find . -path '*/exports/ext4_selftest.json' -print -quit)
+          test -n "$export_json" || { echo "brak eksportu selftestu"; exit 1; }
+          python - "$export_json" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1], encoding="utf-8"))
+          problems = []
+          if data["silent"]:
+              problems.append(f"format variants that opened silently: {data['silent']}")
+          if data["unexpected"]:
+              problems.append(f"variants read the wrong way: {data['unexpected']}")
+          if data["geometry_mismatched"]:
+              problems.append(f"geometry disagrees with dumpe2fs: {data['geometry_mismatched']}")
+          corruption = data.get("corruption", {})
+          if not corruption.get("available"):
+              problems.append(f"corruption corpus unavailable: {corruption.get('why')}")
+          else:
+              if corruption["silent"]:
+                  problems.append(f"corrupted images read silently: {corruption['silent']}")
+              if corruption["wrong"]:
+                  problems.append(f"corrupted images handled wrongly: {corruption['wrong']}")
+              if corruption["cases"] < 8:
+                  problems.append(f"only {corruption['cases']} corruption cases ran")
+          if problems:
+              print("FAIL:")
+              for line in problems:
+                  print("  -", line)
+              raise SystemExit(1)
+          print(f"OK: {data['variants']} wariantow, {corruption['cases']} uszkodzonych obrazow")
+          PY
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -19,33 +94,82 @@ jobs:
         with:
           python-version: "3.12"
 
-      # e2fsprogs is not optional: tests/test_ext4_selftest.py calls the module,
-      # and the module builds its own ext2/3/4 images with mke2fs and compares
-      # our reading against dumpe2fs and debugfs.  Without them it reports itself
-      # unavailable and the assertions silently stop running, which is why this
-      # is a hard dependency of the job rather than a skip.
+      # Not optional for the whole suite: tests/test_ext4_selftest.py calls the
+      # module, and the module builds its own ext2/3/4 images with mke2fs and
+      # compares our reading against dumpe2fs and debugfs.  Without them it
+      # reports itself unavailable and the assertions silently stop running.
       - name: Install e2fsprogs
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y e2fsprogs
 
-      - name: Install linters and pytest
+      - name: Install linters, pytest and coverage
         run: |
           python -m pip install --upgrade pip
-          python -m pip install ruff mypy pytest
+          python -m pip install ruff mypy pytest pytest-cov
 
       - name: ruff
         run: ruff check .
 
-      # Non-blocking on purpose.  `forensic/core` is clean; the modules, the UI
-      # and the acquisition layer are not yet, and a red X on every push while
-      # the count falls from 64 to 0 gets ignored, which is worse than a number
-      # nobody reads.  The `|| true` comes off when the last error does.
-      - name: mypy (advisory)
+      # Non-blocking on purpose, and the number is then gated separately below:
+      # `forensic/core` is clean, the modules, the UI and the acquisition layer
+      # are not yet, and a red X on every push while the count falls from 62 to
+      # 0 gets ignored, which is worse than a number nobody reads.
+      - name: mypy forensic (report only)
         run: mypy forensic || true
 
+      # `forensic/core` is clean and is where the parsers live, so it is the one
+      # package that can be blocking without blocking on debt nobody can pay in
+      # a single commit.
       - name: mypy forensic/core (blocking)
         run: mypy forensic/core
 
-      - name: pytest
-        run: python -m pytest tests/ -q
+      # ...and the rest may not grow.  A per-package gate rather than one total,
+      # because a total is satisfied by accident: one annotation removed from a
+      # clean file and one worse annotation added elsewhere keeps the sum
+      # identical and trades a known place for an unknown one.
+      - name: mypy must not gain errors
+        run: |
+          mypy forensic > /tmp/mypy.txt || true
+          python tools/check_type_regressions.py /tmp/mypy.txt
+
+      # Measured: **35.13% branch coverage** at the time of writing, with
+      # `branch = true` on.  The floor is 35 — at the measured number rounded
+      # down, because a floor set at the rounded-up number fails before anyone has
+      # touched the code, and a gate that does that is a gate nobody trusts.
+      # Branch coverage rather than statements, because for a parser the untaken
+      # branch is the whole subject: this session's defects were a `len(data) <
+      # block_size` path that was taken, an `if v` that excluded nothing because
+      # `-1` is truthy, and a `get(key, 0)` whose default was doing the reporting.
+      #
+      # 35% is not a good number and this step does not pretend otherwise.  The
+      # shape is uploaded rather than inferred from a badge, because the total is
+      # an average over things that should not be averaged:
+      #
+      #   f2fs 81%  erofs 68%  ext4 69%   the parsers, where a wrong answer costs
+      #                                 something
+      #   curses_ui 0%                        needs a terminal this harness lacks
+      #   appdata 13%                         the real gap — accounts, Chrome,
+      #                                 Messenger, shared-prefs and token readers
+      #                                 are exercised by hand and by `verify`
+      #                                 against the reference image, and barely
+      #                                 by pytest at all
+      - name: pytest with coverage
+        run: python -m pytest tests/ -q --cov --cov-report=term --cov-report=xml --cov-report=json:coverage.json --cov-fail-under=35
+
+      # The per-reader floors.  Separate from --cov-fail-under because a
+      # project-wide total is satisfied by accident: one well-tested module lifts
+      # a badly-tested one and the total never moves.  In tools/ rather than in
+      # tests/ because as test files these floors read 0% on any partial run,
+      # and a check that fails whenever it is run on its own is a check that gets
+      # skipped.
+      - name: Filesystem readers above their own coverage floors
+        run: python tools/check_coverage.py coverage.json
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.xml
+          if-no-files-found: ignore

@@ -21,3 +21,6 @@ dist/
 # szerokie, jak gdyby GPL byl w projektie zakazany.
 tsk-sources/
 sleuthkit*/
+coverage.xml
+coverage.json
+.coverage

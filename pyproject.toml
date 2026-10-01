@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "forensic"
-version = "0.16.0"
+version = "0.17.0"
 description = "Offline forensics toolkit for Android partition images (ext4, SQLite, Chromium, AOSP)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -76,6 +76,25 @@ select = ["E4", "E7", "E9", "F", "F841", "UP035", "UP037", "B014", "S324"]
 [tool.ruff.lint.per-file-ignores]
 # S101 asserts are the point of a test.
 "tests/*" = ["S101"]
+
+[tool.coverage.run]
+# Only the package.  `tools/` is a CI helper with no logic worth covering, and
+# counting it would move the total for reasons that have nothing to do with the
+# code being examined.
+source = ["forensic"]
+branch = true
+
+[tool.coverage.report]
+# A missing `else` in a parser is not a coverage event worth reporting on, and
+# the branch total on a 13k-line codebase is dominated by defensive `except`
+# paths that are exercised by the adversarial corpus rather than by any one
+# assertion.  Measured rather than aspirational, and the CI floor is set from it.
+skip_covered = false
+show_missing = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
 
 [tool.mypy]
 python_version = "3.10"
