@@ -23,7 +23,7 @@ imports the parsers without executing them — and a check that fails whenever i
 is run on its own is a check that gets skipped.  A gate belongs next to the job
 that has the whole suite in front of it.
 
-Measured 2026-10-01 with 373 tests, branch coverage:
+Measured 2026-10-01 with 404 tests, branch coverage:
 
 ==================  ======  ===============================================
 part                pokrycie  what it means
@@ -31,8 +31,8 @@ part                pokrycie  what it means
 ``core/appdata.py``    96%   Android application evidence — see below
 ``core/f2fs.py``      81%   the healthiest reader in the project
 ``core/ext4.py``      69%   the reader most of the evidence goes through
-``core/erofs.py``     68%   EROFS, used by ``image_info`` and the self-test
-**project**          **41,07%**  the total, the least interesting number here
+``core/erofs.py``     86%   EROFS — Android 10 and later
+**project**          **41,48%**  the total, the least interesting number here
 ``ui/curses_ui.py``    0%   needs a terminal this harness has not got
 ==================  ======  ===============================================
 
@@ -110,10 +110,18 @@ from pathlib import Path
 #:
 #: Floors rather than exact numbers: a floor fails on a **drop**, which is the
 #: point, and does not have to be edited every time the numbers go up.
+#:
+#: The EROFS floor is the one that was lying.  ``erofs.py`` sat at 68% — above a
+#: 55% floor — while ``pytest tests/`` looked at it **exactly never**: every line
+#: of that coverage came from ``ext4_selftest``, a module the analyst runs by
+#: hand.  It was the fourth-best-tested reader in the report and the third-worst
+#: under CI.  ``tests/test_erofs.py`` builds the images with ``mkfs.erofs`` and
+#: compares against ``dump.erofs``, so the number now describes a run that
+#: happens.
 PARSER_FLOORS = {
     "forensic/core/ext4.py": 60.0,
     "forensic/core/f2fs.py": 70.0,
-    "forensic/core/erofs.py": 55.0,
+    "forensic/core/erofs.py": 80.0,
 }
 
 #: The Android application readers.  Separate from the parsers because the

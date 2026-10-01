@@ -3,6 +3,55 @@
 Wersje narzędzia. Każda tura planu (`PLAN.md`) to jedna wersja; numery
 commitów i wyniki weryfikacji są w `PLAN.md` w sekcji „CHECKPOINTY".
 
+## 0.23.0 — EROFS pod pytest: pokrycie, które opisywało przebieg, którego nikt nie wykonuje
+
+`core/erofs.py` **68% → 86%**, pokrycie całego pakietu **41,07% → 41,48%**,
+373 → **404 testy**. Podłoga podniesiona 55% → 80%.
+
+**To była najbardziej podstępna luka z czterech, właśnie dlatego, że metryka
+wyglądała dobrze.** `erofs.py` siedział na 68% przy podłodze 55%, a **każda linia
+tego pokrycia pochodziła z `ext4_selftest`** — modułu, który analityk uruchamia
+ręcznie. `pytest tests/` patrzył na EROFS **dokładnie nigdy**, a raport
+pokrycia mówił, że to czwarty najlepiej przetestowany czytnik w projekcie.
+Metryka opisująca przebieg, którego CI nie wykonuje, jest gorsza niż brak metryki.
+
+`tests/test_erofs.py` buduje obrazy `mkfs.erofs` i porównuje z `dump.erofs` — te same
+dwa narzędzia, których używa samotest — więc drzewo i treść są sprawdzane przez
+coś spoza tego projektu. Do tego `erofs-utils` w CI, w obu jobach.
+
+**Fixture skompresowany, który niczego nie kompresował.** Pierwsza wersja
+używała tego samego drzewa co obraz nieskompresowany i `mkfs.erofs` **w ogóle nic
+nie skompresował**: mały plik trafia do ogona inoda niezależnie od flagi
+kompresji, więc każdy węzeł wracał `LAYOUT_FLAT_INLINE`, a ścieżka skompresowana
+czytnika nie została osiągnięta. **Fixture, który po cichu niczego nie ćwiczy,
+jest gorszy niż brak fixture'a**, bo raport pokrycia wtedy mówi, że przypadek
+skompresowany jest pokryty. Drugi fixture ma osobne drzewo z plikiem 256 KiB
+z powtarzających się bajtów.
+
+**`dump.erofs --ls` nie jest rekurencyjny.** Pierwsza wersja porównywała nasz
+rekurencyjny `walk` z płaskim listingiem i zgłaszała `sub/b.txt` jako nazwę przez
+nas wymyśloną. Porównanie jest teraz rekurencyjne, poziom po poziomie — czyli w
+tej granulacji, którą narzędzie faktycznie oferuje.
+
+**`Erofs.read` i `Erofs.readlink` przyjmują inode, nie ścieżkę.** `Ext4.read`
+przyjmuje `str | int | Inode`. Kod napisany pod ext4 dostanie
+`TypeError: unsupported operand type(s) for +: 'int' and 'str'` z `inode_offset` —
+komunikat o typie arytmetyki kilka klatek od miejsca pomyłki.
+
+Nic w projekcie nie jest przez to zepsute: jedyny wywołujący sam otwiera inode.
+Ale to **konkretny argument za jednolitym interfejsem czytników**, i pochodzi z
+dowodu, a nie ze smaku — tak jak powinien był argumentowany punkt `FilesystemReader`
+z planu.
+
+Testy (31): drzewo i treść bajt w bajt wobec `dump.erofs`, dowiązanie, katalog
+pusty, obraz skompresowany — drzewo czytelne, treść **odmówiona z nazwaniem
+powodu**, `coverage()` z poprawnym werdyktem, trzy odmowy `resolve`, cache inode'ów,
+node id poza obrazem, osiem klas `type_name` z trybu zamiast z obrazu, nieznany
+layout, `stat`, zakres poza końcem pliku, menedżer kontekstu.
+
+Weryfikacja regresji: zły krok inode'a → 13 testów; usunięta gałąź `fifo` w
+`type_name` → 1; skompresowany plik zwracany jako zera zamiast odmowy → 1.
+
 ## 0.22.0 — `appdata` domknięte: 13% → 96%
 
 `core/appdata.py` **89% → 96%**, pokrycie całegopakietu **40,57% → 41,07%**,
