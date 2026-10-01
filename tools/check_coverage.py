@@ -23,7 +23,7 @@ imports the parsers without executing them — and a check that fails whenever i
 is run on its own is a check that gets skipped.  A gate belongs next to the job
 that has the whole suite in front of it.
 
-Measured 2026-10-01 with 143 tests:
+Measured 2026-10-01 with 202 tests, branch coverage:
 
 ==================  ======  ===============================================
 part                pokrycie  what it means
@@ -31,23 +31,31 @@ part                pokrycie  what it means
 ``core/f2fs.py``      81%   the healthiest reader in the project
 ``core/ext4.py``      69%   the reader most of the evidence goes through
 ``core/erofs.py``     68%   EROFS, used by ``image_info`` and the self-test
+``core/appdata.py``    49%   Android application evidence — see below
+**project**          **37,69%**  the total, which is the least interesting number here
 ``ui/curses_ui.py``    0%   needs a terminal this harness has not got
-``core/appdata.py``    13%   **the largest real gap — see below**
 ==================  ======  ===============================================
 
-The 13% is worth saying out loud.  :mod:`forensic.core.appdata` is where the
-Android application evidence is read — accounts, Chromium databases, Messenger
-preferences, WhatsApp stores, shared-prefs XML, protobuf blobs — and it is the
-module with the most forensic surface in the project and the least automated
-coverage.  It is exercised in practice by ``verify`` against the reference image,
-by hand, and by ``ext4_selftest`` for F2FS; it is exercised here by about a
-thirteenth.
+``core/appdata.py`` was at **13%** and was the largest real hole in the project:
+accounts, Chromium databases, Messenger preferences, WhatsApp stores, shared-prefs
+XML and protobuf blobs, all read by the module with the most forensic surface and
+the least automated coverage.  It was exercised by hand and by ``verify`` against
+the reference image, and barely by pytest.
 
-That is not a call to write 700 tests in one go.  It is a statement of which way
-to go next: a ``tests/test_appdata.py`` building real databases on the fly, in
-the style of ``tests/test_metadata_csum.py``, would move the number that matters
-more than any other in this repository — because ``appdata`` is where a wrong
-answer turns into a wrong conclusion about a person.
+It moved to 49% because :mod:`tests.appdata_fixtures` builds **real files** on
+the readers' own schemas — no image, no 27 GB download, a few milliseconds each —
+and ``tests/test_appdata_formats.py`` and ``tests/test_appdata_sqlite.py`` point
+the readers at them.  What that bought is not line coverage so much as three
+things that used to be untested and are the ones that produce wrong conclusions
+about a person: an uncatalogued WhatsApp type code being counted rather than
+dropped, a missing table staying distinguishable from an empty one, and a database
+that will not open never being reported as one with nothing in it.
+
+Still uncovered in ``appdata``, and the next candidates: ``whatsapp_axolotl``
+(Signal sessions and sender keys), ``messenger_msys`` (the E2EE identity table),
+``wifi_settings`` and ``wpa_supplicant``, ``network_stats``, and the protobuf
+helpers behind ``whatsapp_identity``.  Each needs its own fixture, and each one
+is a schema to be got right rather than a function to be exercised.
 
 Usage::
 
@@ -61,11 +69,28 @@ import json
 import sys
 from pathlib import Path
 
-#: File -> branch coverage floor.  Only the filesystem readers.
+#: Filesystem readers, and their branch coverage floors.
+#:
+#: Floors rather than exact numbers: a floor fails on a **drop**, which is the
+#: point, and does not have to be edited every time the numbers go up.
 PARSER_FLOORS = {
     "forensic/core/ext4.py": 60.0,
     "forensic/core/f2fs.py": 70.0,
     "forensic/core/erofs.py": 55.0,
+}
+
+#: The Android application readers.  Separate from the parsers because the
+#: reason for a floor is different: the parsers' wrong answers are a wrong tree, and
+#: these readers' wrong answers are a wrong statement about a **person** — that an
+#: account did not exist, that a conversation had no messages, that a database
+#: which could not be read held nothing.
+#:
+#: 13% when this was written, and that was the largest real hole in the project.
+#: Building ``tests/appdata_fixtures.py`` — real files on the readers' own
+#: schemas, no image needed — took it to 49%.  The floor sits below that so the
+#: next reader of this file sees how far it moved and what is still uncovered.
+APPLICATION_FLOORS = {
+    "forensic/core/appdata.py": 45.0,
 }
 
 #: Project-wide floor.  Kept equal to ``--cov-fail-under`` in the workflow; the
@@ -92,7 +117,16 @@ def main(argv: list[str]) -> int:
     if total < TOTAL_FLOOR:
         problems.append(f"pokrycie całego pakietu {total:.2f}% < {TOTAL_FLOOR}%")
 
-    for path, floor in sorted(PARSER_FLOORS.items()):
+    all_floors = {**PARSER_FLOORS, **APPLICATION_FLOORS}
+    for path, floor in sorted(all_floors.items()):
+        # The reason a reader's wrong answer matters is not the same for both
+        # groups, and saying "device" for the application readers would
+        # understate what a wrong account list is.
+        stakes = (
+            "błędna odpowiedź staje się błędnym wnioskiem o urządzeniu"
+            if path in PARSER_FLOORS
+            else "błędna odpowiedź staje się błędnym wnioskiem o człowieku"
+        )
         pct = by_file.get(path)
         if pct is None:
             problems.append(f"{path}: brak pomiaru — nic go nie zaimportowało")
@@ -102,9 +136,8 @@ def main(argv: list[str]) -> int:
         print(f"  {path:32} {pct:6.2f}%  (podłoga {floor:.0f}%){mark}")
         if pct < floor:
             problems.append(
-                f"{path}: {pct:.2f}% poniżej podłogi {floor:.0f}% — reader, którego "
-                f"błędna odpowiedź staje się błędnym wnioskiem o urządzeniu, nie może "
-                f"tracić pokrycia"
+                f"{path}: {pct:.2f}% poniżej podłogi {floor:.0f}% — czytnik, którego "
+                f"{stakes}, nie może tracić pokrycia"
             )
 
     # The two files that hold the floors must not drift apart.  Cheap, and it is

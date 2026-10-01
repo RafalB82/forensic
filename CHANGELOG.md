@@ -3,6 +3,82 @@
 Wersje narzędzia. Każda tura planu (`PLAN.md`) to jedna wersja; numery
 commitów i wyniki weryfikacji są w `PLAN.md` w sekcji „CHECKPOINTY".
 
+## 0.18.0 — testy `appdata`: z 13% do 49% na najważniejszym dla zdrowia module
+
+**`forensic/core/appdata.py` był w 13% i był największą dziurą w tym repo.**
+Konta, bazy Chromium, preferencje Messengera, magazyny WhatsAppa, shared-prefs
+XML, bloby protobufowe — moduł o największej powierzchni sądowej w projekcie i
+najmniejszym pokryciu automatycznym. Ćwiczony ręcznie i przez `verify` na obrazie
+referencyjnym, przez pytest w trzynastej części.
+
+Teraz **49%**, a pokrycie całego pakietu **35,13% → 37,69%**. 202 testy (było 143).
+
+**Fixture'y budują prawdziwe pliki** na schematach, których czytnicy naprawdę
+pytają — bez obrazu i bez 27 GB do pobrania, kilka milisekund na plik. Schematy
+są cytowane z czytników, nie zmyślane: fixture zmyślony z domysłu, jak wygląda
+baza WhatsAppa, przeszedłby czytnik, który ma ten domysł zły.
+
+`test_msgstore_fixture_is_the_schema_the_reader_queries` pilnuje, żebymy budowali i
+czytnik nie rozjechały się na nazwach kolumn. Fixture, który milczałby o
+zdanie, które miał złapać.
+
+Trzy rzeczy, których wcześniej nie było testowanych i które robią złe wnioski o
+**człowieku**:
+
+- **nieznany kod typu wiadomości jest liczony, nie pomijany.** Numeracja WhatsAppa
+  przesunęła się między kolumnami Androida i tabele **nie zgadzają się**: 16 to
+  `live_location` na starszej kolumnie i `call_missed` na nowszej, 20 to
+  `sticker` i `live_location`. Zastosowanie niewłaściwego słownika daje etykietę,
+  która brzmi wiarygodnie. Test **zmierzony**, nie z komentarza — pierwsza
+  wersja twierdziła, że różni się kod 9; nie różni się, w obu jest `document`.
+  Zmierzone kody to 16, 20 oraz te, które zna tylko jedna tabela.
+- **brakująca tabela to nie zero wierszy.** `_count` zwraca `-1`, co dziwnie
+  wygląda, więc znaczenie jest przypięte tam, gdzie powstaje. Test na
+  `messages_total` mówi wprost, że brak tabeli `messages` **nie** jest
+  raportowany jako zero wiadomości.
+- **baza, która się nie otwiera, to nie baza bez niczego.** Trzy przypadki
+  rozdzielone: plik nie jest bazą, nagłówek jest, ale schematu nie ma, i baza
+  pusta. To ostatnie jest jedyną czystą negatywą i musi nią zostać.
+
+**Wpis o `is_encrypted` jest wadą, nie pochwałą.** Test
+`test_is_encrypted_does_not_detect_real_ciphertext` mierzy to wprost: **20/20
+prawdziwych szyfrogramów daje `False`**. Warunek to *brak* jakiegokolwiek ciągu
+czterech znaków drukowalnych w pierwszych 4 KiB, a losowe bajty dają ~810 takich
+ciągów na 64 KiB — czyli warunek, który prawdziwe szyfrowanie spełnia, jest
+jednocześnie tym, które odrzuca. **Funkcja nigdzie nie jest wywoływana**, więc
+nic zależy od jej odpowiedzi; gdyby ktoś po nią sięgnął, uznałby, że działa.
+Naprawa to miara entropii albo usunięcie — **decyzja nie moja**, zapisana.
+
+**Sześć moich błędów w testach, każdy z kodem, dlaczego jest błędem:**
+
+| co napisałem | co jest prawdą |
+|---|---|
+| kod 9 różni się między tabelami | w obu `document` |
+| `shared_prefs_xml` jako wartość | to fixture, nie wartość |
+| `silent: 0` w tabeli | `[]` — inny typ w `res.data` |
+| `text_strings` wyciąga `"ab"` | wzorzec wymaga czterech znaków |
+| `properties_store` znajdzie `"string"` | skanuje tylko po `{` |
+| fixture zapisuje wartości jako BLOB | czytnik wymaga `str`; wyszło trzy konta bez nazw |
+
+Ten ostatni jest najciekawszy i dostał własny test: **wiersz z wartością BLOB
+produkuje konto bez nazwy, bez dat i bez tokenu**, nazwane na podstawie nazwy
+wiersza. Baza z wierszami BLOB zgłasza więcej „kont" niż ma ludzi. Poprawka jest
+decyzją o tym, co znaczy wiersz bez czytelnej treści, i **nie została podjęta** —
+zapisany jest pomiar.
+
+Sprawdzone, że nowe testy łapią regresje: `_count` zwracające `0` zamiast `-1`
+→ 3 testy padają; nieznany kod opisany jako „tekst" → 2 testy padają.
+
+Podłoga pokrycia `appdata` dodana do `tools/check_coverage.py` (45%), żeby nie
+mogła się cofnąć. Nadal niepokryte i następne w kolejności: `whatsapp_axolotl`,
+`messenger_msys`, `wifi_settings`, `wpa_supplicant`, `network_stats` i helpery
+protobuf za `whatsapp_identity` — każdy z nich potrzebuje **własnego schematu**,
+a to jest do zrobienia inaczej niż wywołanie funkcji.
+
+Fixture'y są w `tests/appdata_fixtures.py` i ładowane jako `pytest_plugins`
+z `conftest.py`. Import ręczny nie działa: pytest daje fixture'owi parametr o tej
+samej nazwie, a ruff zgłasza import jako redefinicję (`F811`).
+
 ## 0.17.0 — CI: pokrycie i podłogi, które da się zaufać
 
 **Bramka `grep` w samoteście, którą napisałem dzień wcześniej, była zła i
